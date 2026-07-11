@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-blush-50 text-plum-800 font-body antialiased;
+  }
+  h1, h2, h3 {
+    @apply font-display;
+  }
+  ::selection {
+    @apply bg-violet-200 text-plum-900;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-2xl shadow-soft border border-blush-200/60 p-6;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-violet-500 px-5 py-2.5
+           text-sm font-semibold text-white shadow-soft transition hover:bg-violet-600
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-blush-100 px-5 py-2.5
+           text-sm font-semibold text-plum-800 transition hover:bg-blush-200;
+  }
+  .input {
+    @apply w-full rounded-xl border border-blush-200 bg-white px-4 py-2.5 text-sm
+           focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400;
+  }
+  .label {
+    @apply text-xs font-semibold uppercase tracking-wide text-plum-800/60 mb-1.5 block;
+  }
+  .pill {
+    @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
+}
+
+/* Signature: an arched window motif, echoing both Montessori wooden frames
+   and a chapel window — used behind the login card and section headers. */
+.arch-frame {
+  border-radius: 120px 120px 16px 16px;
+}
