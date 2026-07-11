@@ -38,8 +38,7 @@ async def create_student(
     user: CurrentUser = Depends(require_roles("admin", "front_desk")),
 ):
     supabase = get_supabase()
-    # ✅ Use mode="json" to auto-convert date objects to strings
-    data = payload.model_dump(exclude={"guardian_ids"}, mode="json")
+    data = payload.model_dump(exclude={"guardian_ids"})
     res = supabase.table("students").insert(data).execute()
     if not res.data:
         raise HTTPException(

@@ -31,7 +31,6 @@ async def create_term(
     user: CurrentUser = Depends(require_roles("admin", "accountant")),
 ):
     supabase = get_supabase()
-    # ✅ Use mode="json" to auto-convert date objects to strings
     data = payload.model_dump(mode="json")
     res = supabase.table("fee_terms").insert(data).execute()
     if not res.data:
@@ -46,10 +45,9 @@ async def set_fee_structure(
     user: CurrentUser = Depends(require_roles("admin", "accountant")),
 ):
     supabase = get_supabase()
-    # ✅ Use mode="json" (no date fields but good practice)
     res = (
         supabase.table("fee_structures")
-        .upsert(payload.model_dump(mode="json"), on_conflict="term_id,class_id")
+        .upsert(payload.model_dump(), on_conflict="term_id,class_id")
         .execute()
     )
     if not res.data:
@@ -92,7 +90,6 @@ async def record_payment(
     user: CurrentUser = Depends(require_roles("admin", "accountant", "front_desk")),
 ):
     supabase = get_supabase()
-    # ✅ Use mode="json" to auto-convert date/datetime objects to strings
     data = payload.model_dump(mode="json")
     data["received_by"] = user.id
     res = supabase.table("fee_payments").insert(data).execute()

@@ -116,8 +116,7 @@ async def create_broadcast(
 ):
     supabase = get_supabase()
 
-    # ✅ Use mode="json" for consistency (no date fields but good practice)
-    broadcast_data = payload.model_dump(exclude={"channel"}, mode="json")
+    broadcast_data = payload.model_dump(exclude={"channel"})
     broadcast_data["channel"] = payload.channel
     broadcast_data["sent_by"] = user.id
     broadcast_data["status"] = "sending"

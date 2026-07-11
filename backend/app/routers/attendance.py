@@ -28,6 +28,26 @@ async def list_attendance(
     return res.data
 
 
+@router.get("/for-class", response_model=list[AttendanceOut])
+async def attendance_for_class(
+    class_id: str,
+    on_date: date,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Existing marks for one class on one date — used by the frontend to
+    pre-fill the attendance sheet instead of defaulting everyone to 'present'.
+    """
+    supabase = get_supabase()
+    res = (
+        supabase.table("attendance_records")
+        .select("*")
+        .eq("class_id", class_id)
+        .eq("date", on_date.isoformat())
+        .execute()
+    )
+    return res.data
+
+
 @router.post("/mark", response_model=list[AttendanceOut])
 async def bulk_mark_attendance(
     payload: AttendanceBulkMark,
@@ -39,7 +59,7 @@ async def bulk_mark_attendance(
         {
             "student_id": r.student_id,
             "class_id": payload.class_id,
-            "date": payload.attendance_date.isoformat(),  # ✅ Already using isoformat()
+            "date": payload.attendance_date.isoformat(),
             "status": r.status,
             "note": r.note,
             "marked_by": user.id,

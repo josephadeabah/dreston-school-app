@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # --- Classes -----------------------------------------------------------------
@@ -47,6 +47,12 @@ class StudentOut(BaseModel):
 
 
 # --- Attendance ------------------------------------------------------------------
+# NOTE: the field is named `attendance_date` (not `date`) to avoid shadowing the
+# `date` type imported above. The underlying Postgres column is still called
+# `date` — the alias below maps between the two automatically in both
+# directions, so routers can do `payload.attendance_date` while still reading
+# raw Supabase rows (which come back with a `date` key) straight into the
+# `*Out` models.
 class AttendanceMark(BaseModel):
     student_id: str
     status: Literal["present", "absent", "late", "excused"]
@@ -55,34 +61,44 @@ class AttendanceMark(BaseModel):
 
 class AttendanceBulkMark(BaseModel):
     class_id: str
-    attendance_date: date = Field(default_factory=date.today)
+    attendance_date: date = Field(default_factory=date.today, alias="date")
     records: list[AttendanceMark]
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class AttendanceOut(BaseModel):
     id: str
     student_id: str
     class_id: Optional[str] = None
-    attendance_date: date = Field(alias="date")  # ✅ Map database 'date' to attendance_date
+    attendance_date: date = Field(alias="date")
     status: str
     note: Optional[str] = None
-    
-    class Config:
-        populate_by_name = True  # ✅ Allows using both 'attendance_date' and 'date'
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # --- Feeding money ------------------------------------------------------------------
 class FeedingCollectionCreate(BaseModel):
     student_id: str
-    collection_date: date = Field(default_factory=date.today)
+    collection_date: date = Field(default_factory=date.today, alias="date")
     amount: float
     payment_method: Literal["cash", "momo", "bank", "card"] = "cash"
     note: Optional[str] = None
 
+    model_config = ConfigDict(populate_by_name=True)
 
-class FeedingCollectionOut(FeedingCollectionCreate):
+
+class FeedingCollectionOut(BaseModel):
     id: str
+    student_id: str
+    collection_date: date = Field(alias="date")
+    amount: float
+    payment_method: str
+    note: Optional[str] = None
     collected_by: Optional[str] = None
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # --- School fees ------------------------------------------------------------------

@@ -33,15 +33,10 @@ async def record_feeding_collection(
     ),
 ):
     supabase = get_supabase()
-    # ✅ Already fixed with manual mapping
-    data = {
-        "student_id": payload.student_id,
-        "date": payload.collection_date.isoformat(),
-        "amount": payload.amount,
-        "payment_method": payload.payment_method,
-        "note": payload.note,
-        "collected_by": user.id,
-    }
+    data = payload.model_dump(
+        mode="json", by_alias=True
+    )  # emits 'date', matching the DB column
+    data["collected_by"] = user.id
     res = (
         supabase.table("feeding_collections")
         .upsert(data, on_conflict="student_id,date")
@@ -63,7 +58,7 @@ async def daily_summary(on_date: date, user: CurrentUser = Depends(get_current_u
     )
     total = sum(r["amount"] for r in res.data)
     return {
-        "date": on_date.isoformat(),
+        "date": on_date,
         "total_collected": total,
         "number_of_students": len(res.data),
     }
