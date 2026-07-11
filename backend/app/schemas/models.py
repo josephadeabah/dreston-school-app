@@ -55,9 +55,7 @@ class AttendanceMark(BaseModel):
 
 class AttendanceBulkMark(BaseModel):
     class_id: str
-    attendance_date: date = Field(
-        default_factory=date.today
-    )  # ✅ Fixed: renamed from 'date'
+    attendance_date: date = Field(default_factory=date.today)
     records: list[AttendanceMark]
 
 
@@ -65,17 +63,18 @@ class AttendanceOut(BaseModel):
     id: str
     student_id: str
     class_id: Optional[str] = None
-    attendance_date: date  # ✅ Fixed: renamed from 'date'
+    attendance_date: date = Field(alias="date")  # ✅ Map database 'date' to attendance_date
     status: str
     note: Optional[str] = None
+    
+    class Config:
+        populate_by_name = True  # ✅ Allows using both 'attendance_date' and 'date'
 
 
 # --- Feeding money ------------------------------------------------------------------
 class FeedingCollectionCreate(BaseModel):
     student_id: str
-    collection_date: date = Field(
-        default_factory=date.today
-    )  # ✅ Fixed: renamed from 'date'
+    collection_date: date = Field(default_factory=date.today)
     amount: float
     payment_method: Literal["cash", "momo", "bank", "card"] = "cash"
     note: Optional[str] = None
