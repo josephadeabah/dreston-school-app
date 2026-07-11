@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
-import { Eye, EyeOff, Mail, Lock, School, Sparkles } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -33,29 +32,17 @@ export default function LoginPage() {
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-indigo-200/40 to-purple-200/40 rounded-full blur-3xl" />
         <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-blue-200/40 to-indigo-200/40 rounded-full blur-3xl" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-r from-indigo-100/20 to-purple-100/20 rounded-full blur-3xl" />
-        
-        {/* Floating dots pattern */}
-        <div className="absolute inset-0 opacity-[0.03]">
-          <div className="absolute top-20 left-20 w-2 h-2 bg-indigo-600 rounded-full" />
-          <div className="absolute top-40 right-40 w-3 h-3 bg-purple-600 rounded-full" />
-          <div className="absolute bottom-40 left-1/4 w-2 h-2 bg-blue-600 rounded-full" />
-          <div className="absolute bottom-20 right-1/3 w-3 h-3 bg-indigo-600 rounded-full" />
-          <div className="absolute top-1/3 left-1/2 w-2 h-2 bg-purple-600 rounded-full" />
-        </div>
       </div>
 
       <div className="relative w-full max-w-md">
-        {/* Card with glass effect */}
         <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 overflow-hidden">
           {/* Header with gradient */}
           <div className="relative bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 px-8 pt-12 pb-10 text-center overflow-hidden">
-            {/* Decorative glow */}
             <div className="absolute -top-24 -right-24 w-48 h-48 bg-white/10 rounded-full blur-2xl" />
             <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-white/10 rounded-full blur-2xl" />
             
-            {/* Logo/Badge */}
-            <div className="relative mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm border border-white/30 shadow-lg">
-              <School className="h-10 w-10 text-white" strokeWidth={1.5} />
+            <div className="relative mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm border border-white/30 shadow-lg text-4xl">
+              🏫
             </div>
             
             <h1 className="relative text-2xl font-bold text-white tracking-tight">
@@ -64,9 +51,6 @@ export default function LoginPage() {
             <p className="relative mt-2 text-sm text-indigo-100 font-light">
               Welcome back to the Staff Portal
             </p>
-            
-            {/* Decorative sparkle */}
-            <Sparkles className="absolute top-6 right-8 h-5 w-5 text-white/20" />
           </div>
 
           {/* Form */}
@@ -86,8 +70,8 @@ export default function LoginPage() {
                 Email Address
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-slate-400" />
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  ✉️
                 </div>
                 <input
                   id="email"
@@ -115,8 +99,8 @@ export default function LoginPage() {
                 </button>
               </div>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-slate-400" />
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  🔒
                 </div>
                 <input
                   id="password"
@@ -132,11 +116,7 @@ export default function LoginPage() {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
                 >
-                  {showPassword ? (
-                    <EyeOff className="h-5 w-5" />
-                  ) : (
-                    <Eye className="h-5 w-5" />
-                  )}
+                  {showPassword ? "👁️‍🗨️" : "👁️"}
                 </button>
               </div>
             </div>
@@ -175,7 +155,6 @@ export default function LoginPage() {
           </form>
         </div>
 
-        {/* Footer note */}
         <p className="text-center text-xs text-slate-400 mt-6">
           © {new Date().getFullYear()} Dreston Elite Montessori School. All rights reserved.
         </p>
