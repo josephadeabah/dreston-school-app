@@ -31,8 +31,15 @@ async def record_feeding_collection(
     user: CurrentUser = Depends(require_roles("admin", "teacher", "front_desk", "accountant")),
 ):
     supabase = get_supabase()
-    data = payload.model_dump(mode="json")
-    data["collected_by"] = user.id
+    # ✅ Fixed: Convert to dict and manually map fields
+    data = {
+        "student_id": payload.student_id,
+        "date": payload.collection_date.isoformat(),  # ✅ Changed from payload.date to payload.collection_date
+        "amount": payload.amount,
+        "payment_method": payload.payment_method,
+        "note": payload.note,
+        "collected_by": user.id,
+    }
     res = supabase.table("feeding_collections").upsert(
         data, on_conflict="student_id,date"
     ).execute()

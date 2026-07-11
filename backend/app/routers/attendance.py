@@ -39,7 +39,7 @@ async def bulk_mark_attendance(
         {
             "student_id": r.student_id,
             "class_id": payload.class_id,
-            "date": payload.date.isoformat(),
+            "date": payload.attendance_date.isoformat(),  # ✅ Changed from payload.date to payload.attendance_date
             "status": r.status,
             "note": r.note,
             "marked_by": user.id,
