@@ -173,3 +173,14 @@ async def broadcast_recipients_status(
         .execute()
     )
     return res.data
+
+
+@router.delete("/{broadcast_id}")
+async def delete_broadcast(
+    broadcast_id: str, user: CurrentUser = Depends(require_roles("admin"))
+):
+    supabase = get_supabase()
+    res = supabase.table("broadcasts").delete().eq("id", broadcast_id).execute()
+    if not res.data:
+        raise HTTPException(404, "That message could not be found.")
+    return {"message": "Message record deleted."}

@@ -19,11 +19,28 @@ async def create_class(
     payload: ClassCreate, user: CurrentUser = Depends(require_roles("admin"))
 ):
     supabase = get_supabase()
-    # ✅ Added mode="json" for consistency
-    res = supabase.table("classes").insert(payload.model_dump(mode="json")).execute()
+    res = supabase.table("classes").insert(payload.model_dump()).execute()
     if not res.data:
         raise HTTPException(500, "Could not create the class. Please try again.")
     return res.data[0]
+
+
+@router.delete("/classes/{class_id}")
+async def delete_class(
+    class_id: str, user: CurrentUser = Depends(require_roles("admin"))
+):
+    supabase = get_supabase()
+    try:
+        res = supabase.table("classes").delete().eq("id", class_id).execute()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            409,
+            "This class still has students, attendance, or fee records attached to it. "
+            "Move or remove those first.",
+        ) from exc
+    if not res.data:
+        raise HTTPException(404, "That class could not be found.")
+    return {"message": "Class deleted."}
 
 
 @router.get("/guardians", response_model=list[GuardianOut])
@@ -44,10 +61,20 @@ async def create_guardian(
     user: CurrentUser = Depends(require_roles("admin", "front_desk")),
 ):
     supabase = get_supabase()
-    # ✅ Added mode="json" for consistency
-    res = supabase.table("guardians").insert(payload.model_dump(mode="json")).execute()
+    res = supabase.table("guardians").insert(payload.model_dump()).execute()
     if not res.data:
         raise HTTPException(
             400, "Could not add this guardian. The phone number may already exist."
         )
     return res.data[0]
+
+
+@router.delete("/guardians/{guardian_id}")
+async def delete_guardian(
+    guardian_id: str, user: CurrentUser = Depends(require_roles("admin", "front_desk"))
+):
+    supabase = get_supabase()
+    res = supabase.table("guardians").delete().eq("id", guardian_id).execute()
+    if not res.data:
+        raise HTTPException(404, "That guardian could not be found.")
+    return {"message": "Guardian deleted."}

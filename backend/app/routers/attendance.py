@@ -75,3 +75,14 @@ async def bulk_mark_attendance(
         .execute()
     )
     return res.data
+
+
+@router.delete("/{record_id}")
+async def delete_attendance_record(
+    record_id: str, user: CurrentUser = Depends(require_roles("admin", "teacher"))
+):
+    supabase = get_supabase()
+    res = supabase.table("attendance_records").delete().eq("id", record_id).execute()
+    if not res.data:
+        raise HTTPException(404, "That attendance record could not be found.")
+    return {"message": "Attendance record deleted."}

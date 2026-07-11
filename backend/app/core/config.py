@@ -8,9 +8,13 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str
     SUPABASE_JWT_SECRET: str
 
-    AT_USERNAME: str = "sandbox"
-    AT_API_KEY: str = ""
-    AT_SENDER_ID: str = "DrestonElite"
+    ARKESEL_API_KEY: str = ""
+    ARKESEL_SENDER_ID: str = (
+        "DrestonElit"  # max 11 chars, no spaces, for alphanumeric sender IDs
+    )
+    ARKESEL_SANDBOX: bool = (
+        True  # keep true until you've registered a sender ID and bought credit
+    )
 
     RESEND_API_KEY: str = ""
     RESEND_FROM_EMAIL: str = "school@drestonelite.edu.gh"

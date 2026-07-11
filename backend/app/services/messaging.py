@@ -1,8 +1,10 @@
 """Low-cost broadcast messaging.
 
-SMS: Africa's Talking (https://africastalking.com) — pay-as-you-go, no
-monthly fee, works well across Ghana/West Africa, has a free sandbox mode
-for development.
+SMS: Arkesel (https://arkesel.com) — a Ghana-based SMS platform with direct
+connections to MTN, Telecel, and AirtelTigo. Free to sign up, with a
+sandbox mode (set ARKESEL_SANDBOX=true) that validates and "sends" messages
+without spending real credit or touching a live phone number — ideal while
+building and testing.
 
 Email: Resend (https://resend.com) — free tier of 3,000 emails/month,
 no credit card required.
@@ -16,43 +18,38 @@ import httpx
 
 from app.core.config import settings
 
-AT_BASE_URL = (
-    "https://api.sandbox.africastalking.com/version1/messaging"
-    if settings.AT_USERNAME == "sandbox"
-    else "https://api.africastalking.com/version1/messaging"
-)
+ARKESEL_SEND_URL = "https://sms.arkesel.com/api/v2/sms/send"
+
+
+def _normalize_phone(phone: str) -> str:
+    """Arkesel expects numbers without a leading '+'. Guardians are stored as
+    +233XXXXXXXXX (E.164); strip the plus if present."""
+    return phone.lstrip("+")
 
 
 async def send_sms(phone: str, message: str) -> tuple[bool, str | None, str | None]:
     """Returns (success, provider_message_id, error)."""
-    if not settings.AT_API_KEY:
-        return False, None, "SMS is not configured yet (missing AT_API_KEY)."
+    if not settings.ARKESEL_API_KEY:
+        return False, None, "SMS is not configured yet (missing ARKESEL_API_KEY)."
 
     headers = {
-        "apiKey": settings.AT_API_KEY,
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "application/json",
+        "api-key": settings.ARKESEL_API_KEY,
+        "Content-Type": "application/json",
     }
-    data = {
-        "username": settings.AT_USERNAME,
-        "to": phone,
+    payload = {
+        "sender": settings.ARKESEL_SENDER_ID,
         "message": message,
-        "from": settings.AT_SENDER_ID,
+        "recipients": [_normalize_phone(phone)],
+        "sandbox": settings.ARKESEL_SANDBOX,
     }
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(AT_BASE_URL, headers=headers, data=data)
+            resp = await client.post(ARKESEL_SEND_URL, headers=headers, json=payload)
             resp.raise_for_status()
-            payload = resp.json()
-            recipients = payload.get("SMSMessageData", {}).get("Recipients", [])
-            if recipients and recipients[0].get("status") == "Success":
-                return True, recipients[0].get("messageId"), None
-            error = (
-                recipients[0].get("status")
-                if recipients
-                else "Unknown SMS provider error."
-            )
-            return False, None, error
+            body = resp.json()
+            if body.get("status") == "success":
+                return True, body.get("data", {}).get("id"), None
+            return False, None, body.get("message") or "Arkesel rejected this message."
     except Exception as exc:  # noqa: BLE001 — surfaced to the caller, not swallowed
         return False, None, str(exc)
 

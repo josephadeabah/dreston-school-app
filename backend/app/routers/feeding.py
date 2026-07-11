@@ -47,6 +47,20 @@ async def record_feeding_collection(
     return res.data[0]
 
 
+@router.delete("/{record_id}")
+async def delete_feeding_collection(
+    record_id: str,
+    user: CurrentUser = Depends(
+        require_roles("admin", "teacher", "front_desk", "accountant")
+    ),
+):
+    supabase = get_supabase()
+    res = supabase.table("feeding_collections").delete().eq("id", record_id).execute()
+    if not res.data:
+        raise HTTPException(404, "That feeding money record could not be found.")
+    return {"message": "Feeding money record deleted."}
+
+
 @router.get("/summary/daily")
 async def daily_summary(on_date: date, user: CurrentUser = Depends(get_current_user)):
     supabase = get_supabase()

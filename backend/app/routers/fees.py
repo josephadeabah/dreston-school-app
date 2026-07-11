@@ -38,6 +38,17 @@ async def create_term(
     return res.data[0]
 
 
+@router.delete("/terms/{term_id}")
+async def delete_term(
+    term_id: str, user: CurrentUser = Depends(require_roles("admin", "accountant"))
+):
+    supabase = get_supabase()
+    res = supabase.table("fee_terms").delete().eq("id", term_id).execute()
+    if not res.data:
+        raise HTTPException(404, "That fee term could not be found.")
+    return {"message": "Fee term deleted."}
+
+
 # --- Structures (how much each class owes per term) -----------------------------------------------------------------
 @router.post("/structures", response_model=FeeStructureOut)
 async def set_fee_structure(
@@ -53,6 +64,17 @@ async def set_fee_structure(
     if not res.data:
         raise HTTPException(500, "Could not save the fee structure.")
     return res.data[0]
+
+
+@router.delete("/structures/{structure_id}")
+async def delete_fee_structure(
+    structure_id: str, user: CurrentUser = Depends(require_roles("admin", "accountant"))
+):
+    supabase = get_supabase()
+    res = supabase.table("fee_structures").delete().eq("id", structure_id).execute()
+    if not res.data:
+        raise HTTPException(404, "That fee structure could not be found.")
+    return {"message": "Fee structure deleted."}
 
 
 @router.get("/structures", response_model=list[FeeStructureOut])
@@ -96,6 +118,18 @@ async def record_payment(
     if not res.data:
         raise HTTPException(500, "Could not record this fee payment.")
     return res.data[0]
+
+
+@router.delete("/payments/{payment_id}")
+async def delete_payment(
+    payment_id: str,
+    user: CurrentUser = Depends(require_roles("admin", "accountant")),
+):
+    supabase = get_supabase()
+    res = supabase.table("fee_payments").delete().eq("id", payment_id).execute()
+    if not res.data:
+        raise HTTPException(404, "That payment could not be found.")
+    return {"message": "Payment deleted."}
 
 
 # --- Balances -----------------------------------------------------------------
