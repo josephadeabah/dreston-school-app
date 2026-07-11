@@ -20,18 +20,28 @@ class CurrentUser:
 
 def _decode_token(token: str) -> dict:
     try:
-        # ✅ Fixed: Removed audience validation
-        payload = jwt.decode(
-            token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False},  # Don't verify audience for Supabase tokens
-        )
-        return payload
+        # ✅ Try HS256 first (Supabase default)
+        try:
+            payload = jwt.decode(
+                token,
+                settings.SUPABASE_JWT_SECRET,
+                algorithms=["HS256"],
+                options={"verify_aud": False},
+            )
+            return payload
+        except JWTError:
+            # ✅ If HS256 fails, try RS256 (for some Supabase setups)
+            payload = jwt.decode(
+                token,
+                settings.SUPABASE_JWT_SECRET,
+                algorithms=["RS256"],
+                options={"verify_aud": False},
+            )
+            return payload
     except JWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid or expired session. Please log in again. Error: {str(e)}",
+            detail=f"Invalid or expired session. Error: {str(e)}",
         )
 
 
@@ -43,7 +53,6 @@ async def get_current_user(
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid session token.")
 
-    # ✅ Get email from the correct location in the token
     email = payload.get("email") or payload.get("user_metadata", {}).get("email")
     
     supabase = get_supabase()
