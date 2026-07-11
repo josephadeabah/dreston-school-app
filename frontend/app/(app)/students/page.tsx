@@ -58,6 +58,27 @@ export default function StudentsPage() {
     }
   }
 
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  async function handleRemove(student: Student) {
+    if (
+      !confirm(
+        `Remove ${student.full_name} from the active roster? Their attendance, fee, and feeding history is kept — this just takes them off the current lists.`
+      )
+    )
+      return;
+    setRemovingId(student.id);
+    try {
+      await api.delete(`/students/${student.id}`);
+      toast.success(`${student.full_name} was removed from the roster.`);
+      setStudents((prev) => prev.filter((s) => s.id !== student.id));
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not remove this student.");
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
   return (
     <div>
       <header className="flex items-center justify-between mb-6">
@@ -136,6 +157,7 @@ export default function StudentsPage() {
               <th className="px-5 py-3 font-semibold">Admission #</th>
               <th className="px-5 py-3 font-semibold">Name</th>
               <th className="px-5 py-3 font-semibold">Class</th>
+              <th className="px-5 py-3 font-semibold w-20"></th>
             </tr>
           </thead>
           <tbody>
@@ -146,11 +168,20 @@ export default function StudentsPage() {
                 </td>
                 <td className="px-5 py-3 font-medium">{s.full_name}</td>
                 <td className="px-5 py-3">{classNameFor(s.class_id)}</td>
+                <td className="px-5 py-3">
+                  <button
+                    onClick={() => handleRemove(s)}
+                    disabled={removingId === s.id}
+                    className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                  >
+                    {removingId === s.id ? "…" : "Remove"}
+                  </button>
+                </td>
               </tr>
             ))}
             {students.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-5 py-8 text-center text-plum-800/50">
+                <td colSpan={4} className="px-5 py-8 text-center text-plum-800/50">
                   No students found. Try adding one above.
                 </td>
               </tr>

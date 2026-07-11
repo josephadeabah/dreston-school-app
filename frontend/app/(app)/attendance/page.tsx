@@ -19,11 +19,13 @@ export default function AttendancePage() {
   const [classId, setClassId] = useState("");
   const [students, setStudents] = useState<Student[]>([]);
   const [marks, setMarks] = useState<Record<string, Status>>({});
-  const [savedMarks, setSavedMarks] = useState<Record<string, Status>>({});
+  // Full saved records (not just status) so we have the record id to delete.
+  const [savedRecords, setSavedRecords] = useState<Record<string, AttendanceRecord>>({});
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
   const [loadingSheet, setLoadingSheet] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<ClassItem[]>("/classes").then(setClasses).catch((e) => toast.error(e.message));
@@ -46,23 +48,23 @@ export default function AttendancePage() {
       .then(([studentList, existingRecords]) => {
         setStudents(studentList);
 
-        const existingByStudent: Record<string, Status> = {};
-        existingRecords.forEach((r) => (existingByStudent[r.student_id] = r.status));
+        const existingByStudent: Record<string, AttendanceRecord> = {};
+        existingRecords.forEach((r) => (existingByStudent[r.student_id] = r));
 
         const nextMarks: Record<string, Status> = {};
         studentList.forEach((s) => {
-          nextMarks[s.id] = existingByStudent[s.id] ?? "present";
+          nextMarks[s.id] = existingByStudent[s.id]?.status ?? "present";
         });
 
         setMarks(nextMarks);
-        setSavedMarks(existingByStudent);
+        setSavedRecords(existingByStudent);
       })
       .catch((e) => toast.error(e.message))
       .finally(() => setLoadingSheet(false));
   }, [classId, date]);
 
   const hasUnsavedChanges = students.some(
-    (s) => marks[s.id] !== (savedMarks[s.id] ?? "present") || !(s.id in savedMarks)
+    (s) => marks[s.id] !== (savedRecords[s.id]?.status ?? "present") || !(s.id in savedRecords)
   );
 
   async function handleSave() {
@@ -78,15 +80,37 @@ export default function AttendancePage() {
         })),
       });
 
-      const nowSaved: Record<string, Status> = {};
-      records.forEach((r) => (nowSaved[r.student_id] = r.status));
-      setSavedMarks(nowSaved);
+      const nowSaved: Record<string, AttendanceRecord> = {};
+      records.forEach((r) => (nowSaved[r.student_id] = r));
+      setSavedRecords(nowSaved);
       setLastSavedAt(new Date().toLocaleTimeString());
       toast.success("Attendance saved.");
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not save attendance.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete(studentId: string) {
+    const record = savedRecords[studentId];
+    if (!record) return;
+    if (!confirm("Delete this attendance record? This can't be undone.")) return;
+
+    setDeletingId(record.id);
+    try {
+      await api.delete(`/attendance/${record.id}`);
+      toast.success("Attendance record deleted.");
+      setSavedRecords((prev) => {
+        const next = { ...prev };
+        delete next[studentId];
+        return next;
+      });
+      setMarks((prev) => ({ ...prev, [studentId]: "present" }));
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not delete this record.");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -159,12 +183,13 @@ export default function AttendancePage() {
                 <tr>
                   <th className="px-5 py-3 font-semibold">Student</th>
                   <th className="px-5 py-3 font-semibold">Status</th>
-                  <th className="px-5 py-3 font-semibold w-24">Saved</th>
+                  <th className="px-5 py-3 font-semibold w-32">Saved</th>
                 </tr>
               </thead>
               <tbody>
                 {students.map((s) => {
-                  const isSaved = savedMarks[s.id] === marks[s.id] && s.id in savedMarks;
+                  const record = savedRecords[s.id];
+                  const isSaved = record?.status === marks[s.id];
                   return (
                     <tr key={s.id} className="border-t border-blush-100">
                       <td className="px-5 py-3 font-medium">{s.full_name}</td>
@@ -186,11 +211,23 @@ export default function AttendancePage() {
                         </div>
                       </td>
                       <td className="px-5 py-3">
-                        {isSaved ? (
-                          <span className="text-green-600 text-xs">✓ saved</span>
-                        ) : (
-                          <span className="text-gold-500 text-xs">pending</span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {isSaved ? (
+                            <span className="text-green-600 text-xs">✓ saved</span>
+                          ) : (
+                            <span className="text-gold-500 text-xs">pending</span>
+                          )}
+                          {record && (
+                            <button
+                              onClick={() => handleDelete(s.id)}
+                              disabled={deletingId === record.id}
+                              className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                              title="Delete this attendance record"
+                            >
+                              {deletingId === record.id ? "…" : "Delete"}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

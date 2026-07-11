@@ -46,6 +46,13 @@ export interface FeeTerm {
   end_date: string | null;
 }
 
+export interface FeeStructure {
+  id: string;
+  term_id: string;
+  class_id: string;
+  amount_due: number;
+}
+
 export interface FeePayment {
   id: string;
   student_id: string;

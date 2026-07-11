@@ -31,6 +31,22 @@ export default function MessagingPage() {
     setBroadcasts(b);
   }
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function handleDeleteBroadcast(id: string) {
+    if (!confirm("Delete this message record? This can't be undone.")) return;
+    setDeletingId(id);
+    try {
+      await api.delete(`/broadcasts/${id}`);
+      toast.success("Message record deleted.");
+      setBroadcasts((prev) => prev.filter((b) => b.id !== id));
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not delete this message.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   useEffect(() => {
     loadBroadcasts().catch((e) => toast.error(e.message));
     api.get<ClassItem[]>("/classes").then(setClasses);
@@ -167,6 +183,7 @@ export default function MessagingPage() {
               <th className="px-5 py-3 font-semibold">Channel</th>
               <th className="px-5 py-3 font-semibold">Audience</th>
               <th className="px-5 py-3 font-semibold">Status</th>
+              <th className="px-5 py-3 font-semibold w-20"></th>
             </tr>
           </thead>
           <tbody>
@@ -178,11 +195,20 @@ export default function MessagingPage() {
                 <td className="px-5 py-3">
                   <span className={`pill capitalize ${STATUS_STYLES[b.status]}`}>{b.status}</span>
                 </td>
+                <td className="px-5 py-3">
+                  <button
+                    onClick={() => handleDeleteBroadcast(b.id)}
+                    disabled={deletingId === b.id}
+                    className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                  >
+                    {deletingId === b.id ? "…" : "Delete"}
+                  </button>
+                </td>
               </tr>
             ))}
             {broadcasts.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-5 py-8 text-center text-plum-800/50">
+                <td colSpan={5} className="px-5 py-8 text-center text-plum-800/50">
                   No messages sent yet.
                 </td>
               </tr>

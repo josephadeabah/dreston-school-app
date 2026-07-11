@@ -74,6 +74,21 @@ export default function FeedingPage() {
     }
   }
 
+  async function handleDelete(studentId: string, recordId: string) {
+    if (!confirm("Delete this feeding money record? This can't be undone.")) return;
+    try {
+      await api.delete(`/feeding/${recordId}`);
+      toast.success("Record deleted.");
+      setCollectedByStudent((prev) => {
+        const next = { ...prev };
+        delete next[studentId];
+        return next;
+      });
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not delete this record.");
+    }
+  }
+
   return (
     <div>
       <header className="mb-6">
@@ -156,8 +171,17 @@ export default function FeedingPage() {
                     {loadingCollections ? (
                       <span className="text-plum-800/30 text-xs">…</span>
                     ) : existing ? (
-                      <span className="pill bg-green-100 text-green-700">
-                        GHS {existing.amount.toFixed(2)} · {existing.payment_method}
+                      <span className="inline-flex items-center gap-2">
+                        <span className="pill bg-green-100 text-green-700">
+                          GHS {existing.amount.toFixed(2)} · {existing.payment_method}
+                        </span>
+                        <button
+                          onClick={() => handleDelete(s.id, existing.id)}
+                          className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                          title="Delete this record"
+                        >
+                          Delete
+                        </button>
                       </span>
                     ) : (
                       <span className="pill bg-blush-50 text-plum-800/40">Not paid yet</span>

@@ -3,18 +3,30 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { api, ApiError } from "@/lib/api";
-import { ClassItem, FeeTerm, Student, StudentFeeBalance } from "@/lib/types";
+import {
+  ClassItem,
+  FeePayment,
+  FeeStructure,
+  FeeTerm,
+  Student,
+  StudentFeeBalance,
+} from "@/lib/types";
 
 export default function FeesPage() {
   const [terms, setTerms] = useState<FeeTerm[]>([]);
   const [termId, setTermId] = useState("");
   const [balances, setBalances] = useState<StudentFeeBalance[]>([]);
+  const [structures, setStructures] = useState<FeeStructure[]>([]);
+  const [payments, setPayments] = useState<FeePayment[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [loadingBalances, setLoadingBalances] = useState(false);
 
   const [showTermForm, setShowTermForm] = useState(false);
   const [showStructureForm, setShowStructureForm] = useState(false);
+  const [deletingTerm, setDeletingTerm] = useState(false);
+  const [deletingStructureId, setDeletingStructureId] = useState<string | null>(null);
+  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
 
   const [termForm, setTermForm] = useState({ name: "", start_date: "", end_date: "" });
   const [structureForm, setStructureForm] = useState({ class_id: "", amount_due: "" });
@@ -29,23 +41,38 @@ export default function FeesPage() {
   });
   const [saving, setSaving] = useState(false);
 
+  function classNameFor(id: string) {
+    return classes.find((c) => c.id === id)?.name ?? "—";
+  }
+  function studentNameFor(id: string) {
+    return students.find((s) => s.id === id)?.full_name ?? "Unknown student";
+  }
+
   async function loadTerms() {
     const t = await api.get<FeeTerm[]>("/fees/terms");
     setTerms(t);
     return t;
   }
 
-  async function loadBalances(id: string) {
+  async function loadTermData(id: string) {
     if (!id) {
       setBalances([]);
+      setStructures([]);
+      setPayments([]);
       return;
     }
     setLoadingBalances(true);
     try {
-      const b = await api.get<StudentFeeBalance[]>(`/fees/balances/${id}`);
+      const [b, s, p] = await Promise.all([
+        api.get<StudentFeeBalance[]>(`/fees/balances/${id}`),
+        api.get<FeeStructure[]>(`/fees/structures?term_id=${id}`),
+        api.get<FeePayment[]>(`/fees/payments?term_id=${id}`),
+      ]);
       setBalances(b);
+      setStructures(s);
+      setPayments(p);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "Could not load fee balances.");
+      toast.error(e instanceof ApiError ? e.message : "Could not load fee data for this term.");
     } finally {
       setLoadingBalances(false);
     }
@@ -60,7 +87,7 @@ export default function FeesPage() {
   }, []);
 
   useEffect(() => {
-    loadBalances(termId);
+    loadTermData(termId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [termId]);
 
@@ -80,13 +107,34 @@ export default function FeesPage() {
       toast.success(`"${created.name}" was created.`);
       setTermForm({ name: "", start_date: "", end_date: "" });
       setShowTermForm(false);
-      const updated = await loadTerms();
+      await loadTerms();
       setTermId(created.id);
-      void updated;
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not create this term.");
     } finally {
       setSavingTerm(false);
+    }
+  }
+
+  async function handleDeleteTerm() {
+    if (!termId) return;
+    const term = terms.find((t) => t.id === termId);
+    if (
+      !confirm(
+        `Delete "${term?.name}"? This also removes its fee-per-class amounts. Payments already recorded are kept, just unlinked from this term. This can't be undone.`
+      )
+    )
+      return;
+    setDeletingTerm(true);
+    try {
+      await api.delete(`/fees/terms/${termId}`);
+      toast.success("Term deleted.");
+      const updated = await loadTerms();
+      setTermId(updated[0]?.id ?? "");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not delete this term.");
+    } finally {
+      setDeletingTerm(false);
     }
   }
 
@@ -110,11 +158,25 @@ export default function FeesPage() {
       toast.success("Fee amount set for this class.");
       setStructureForm({ class_id: "", amount_due: "" });
       setShowStructureForm(false);
-      loadBalances(termId);
+      loadTermData(termId);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not save the fee structure.");
     } finally {
       setSavingStructure(false);
+    }
+  }
+
+  async function handleDeleteStructure(structureId: string) {
+    if (!confirm("Remove this class's fee amount for the term?")) return;
+    setDeletingStructureId(structureId);
+    try {
+      await api.delete(`/fees/structures/${structureId}`);
+      toast.success("Fee structure removed.");
+      loadTermData(termId);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not remove this fee structure.");
+    } finally {
+      setDeletingStructureId(null);
     }
   }
 
@@ -135,11 +197,25 @@ export default function FeesPage() {
       });
       toast.success("Payment recorded.");
       setPayment({ student_id: "", amount: "", payment_method: "cash", reference: "" });
-      if (termId) loadBalances(termId);
+      if (termId) loadTermData(termId);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not record this payment.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDeletePayment(paymentId: string) {
+    if (!confirm("Delete this payment? This can't be undone.")) return;
+    setDeletingPaymentId(paymentId);
+    try {
+      await api.delete(`/fees/payments/${paymentId}`);
+      toast.success("Payment deleted.");
+      loadTermData(termId);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not delete this payment.");
+    } finally {
+      setDeletingPaymentId(null);
     }
   }
 
@@ -168,6 +244,15 @@ export default function FeesPage() {
               </option>
             ))}
           </select>
+          {termId && (
+            <button
+              className="text-xs text-red-500 hover:text-red-700 hover:underline"
+              disabled={deletingTerm}
+              onClick={handleDeleteTerm}
+            >
+              {deletingTerm ? "Deleting…" : "Delete term"}
+            </button>
+          )}
           <button className="btn-secondary" onClick={() => setShowTermForm((v) => !v)}>
             {showTermForm ? "Cancel" : "+ New term"}
           </button>
@@ -253,7 +338,7 @@ export default function FeesPage() {
       {showStructureForm && (
         <form
           onSubmit={handleSetStructure}
-          className="card mb-6 grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"
+          className="card mb-4 grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"
         >
           <div>
             <label className="label">Class</label>
@@ -287,6 +372,37 @@ export default function FeesPage() {
             </button>
           </div>
         </form>
+      )}
+
+      {structures.length > 0 && (
+        <div className="card p-0 overflow-hidden mb-6">
+          <table className="w-full text-sm">
+            <thead className="bg-blush-100 text-plum-800/70 text-left">
+              <tr>
+                <th className="px-5 py-3 font-semibold">Class</th>
+                <th className="px-5 py-3 font-semibold">Amount due</th>
+                <th className="px-5 py-3 font-semibold w-20"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {structures.map((s) => (
+                <tr key={s.id} className="border-t border-blush-100">
+                  <td className="px-5 py-3 font-medium">{classNameFor(s.class_id)}</td>
+                  <td className="px-5 py-3">GHS {s.amount_due.toFixed(2)}</td>
+                  <td className="px-5 py-3">
+                    <button
+                      onClick={() => handleDeleteStructure(s.id)}
+                      disabled={deletingStructureId === s.id}
+                      className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                    >
+                      {deletingStructureId === s.id ? "…" : "Delete"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <form onSubmit={handlePayment} className="card mb-6 grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
@@ -338,7 +454,8 @@ export default function FeesPage() {
         </div>
       </form>
 
-      <div className="card p-0 overflow-hidden">
+      <h2 className="font-display font-semibold text-plum-800 mb-3">Balances by student</h2>
+      <div className="card p-0 overflow-hidden mb-6">
         <table className="w-full text-sm">
           <thead className="bg-blush-100 text-plum-800/70 text-left">
             <tr>
@@ -377,6 +494,49 @@ export default function FeesPage() {
               <tr>
                 <td colSpan={4} className="px-5 py-8 text-center text-plum-800/50">
                   No fee data yet for this term. Set a fee amount per class above to get started.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 className="font-display font-semibold text-plum-800 mb-3">Recent payments</h2>
+      <div className="card p-0 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-blush-100 text-plum-800/70 text-left">
+            <tr>
+              <th className="px-5 py-3 font-semibold">Student</th>
+              <th className="px-5 py-3 font-semibold">Amount</th>
+              <th className="px-5 py-3 font-semibold">Method</th>
+              <th className="px-5 py-3 font-semibold">Date</th>
+              <th className="px-5 py-3 font-semibold w-20"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {payments.map((p) => (
+              <tr key={p.id} className="border-t border-blush-100">
+                <td className="px-5 py-3 font-medium">{studentNameFor(p.student_id)}</td>
+                <td className="px-5 py-3">GHS {p.amount.toFixed(2)}</td>
+                <td className="px-5 py-3 capitalize">{p.payment_method}</td>
+                <td className="px-5 py-3 text-plum-800/60">
+                  {new Date(p.paid_at).toLocaleDateString()}
+                </td>
+                <td className="px-5 py-3">
+                  <button
+                    onClick={() => handleDeletePayment(p.id)}
+                    disabled={deletingPaymentId === p.id}
+                    className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                  >
+                    {deletingPaymentId === p.id ? "…" : "Delete"}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {payments.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-5 py-8 text-center text-plum-800/50">
+                  No payments recorded yet for this term.
                 </td>
               </tr>
             )}
