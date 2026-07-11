@@ -1,8 +1,7 @@
 from dataclasses import dataclass
-
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, JWTError
+from supabase import create_client
 
 from app.core.config import settings
 from app.core.supabase_client import get_supabase
@@ -15,34 +14,30 @@ class CurrentUser:
     id: str
     email: str | None
     full_name: str
-    role: str  # admin | teacher | accountant | front_desk
-
-
-def _decode_token(token: str) -> dict:
-    try:
-        payload = jwt.decode(
-            token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            audience="authenticated",
-        )
-        return payload
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired session. Please log in again.",
-        )
+    role: str
 
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> CurrentUser:
-    payload = _decode_token(credentials.credentials)
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid session token.")
-
+    token = credentials.credentials
+    
+    # Let Supabase verify the token
     supabase = get_supabase()
+    try:
+        # This will verify the token using Supabase's built-in verification
+        user = supabase.auth.get_user(token)
+        user_id = user.user.id
+        email = user.user.email
+        
+    except Exception as e:
+        print(f"Auth error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token. Please log in again.",
+        )
+    
+    # Now get the staff profile
     result = (
         supabase.table("staff_profiles")
         .select("id, full_name, role, is_active")
@@ -59,7 +54,7 @@ async def get_current_user(
 
     return CurrentUser(
         id=user_id,
-        email=payload.get("email"),
+        email=email,
         full_name=profile["full_name"],
         role=profile["role"],
     )
