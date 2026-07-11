@@ -34,7 +34,11 @@ async def summary(user: CurrentUser = Depends(get_current_user)):
     )
 
     feeding_rows = (
-        supabase.table("feeding_collections").select("amount").eq("date", today).execute().data
+        supabase.table("feeding_collections")
+        .select("amount")
+        .eq("date", today)
+        .execute()
+        .data
     )
     feeding_total = sum(r["amount"] for r in feeding_rows)
 

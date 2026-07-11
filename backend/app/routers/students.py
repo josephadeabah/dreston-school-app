@@ -2,7 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.security import CurrentUser, get_current_user, require_roles
 from app.core.supabase_client import get_supabase
-from app.schemas.models import GuardianLinkCreate, GuardianOut, StudentCreate, StudentOut
+from app.schemas.models import (
+    GuardianLinkCreate,
+    GuardianOut,
+    StudentCreate,
+    StudentOut,
+)
 
 router = APIRouter(prefix="/students", tags=["students"])
 
@@ -38,11 +43,13 @@ async def create_student(
     user: CurrentUser = Depends(require_roles("admin", "front_desk")),
 ):
     supabase = get_supabase()
-    data = payload.model_dump(exclude={"guardian_ids"})
+    # ✅ FIXED: Added mode="json" to convert date objects to strings
+    data = payload.model_dump(exclude={"guardian_ids"}, mode="json")
     res = supabase.table("students").insert(data).execute()
     if not res.data:
         raise HTTPException(
-            400, "Could not add this student. The admission number may already be in use."
+            400,
+            "Could not add this student. The admission number may already be in use.",
         )
     student = res.data[0]
 
@@ -61,7 +68,9 @@ async def deactivate_student(
     student_id: str, user: CurrentUser = Depends(require_roles("admin"))
 ):
     supabase = get_supabase()
-    supabase.table("students").update({"is_active": False}).eq("id", student_id).execute()
+    supabase.table("students").update({"is_active": False}).eq(
+        "id", student_id
+    ).execute()
     return {"message": "Student marked inactive."}
 
 
@@ -97,12 +106,18 @@ async def link_guardian_to_student(
 ):
     supabase = get_supabase()
 
-    student = supabase.table("students").select("id").eq("id", student_id).execute().data
+    student = (
+        supabase.table("students").select("id").eq("id", student_id).execute().data
+    )
     if not student:
         raise HTTPException(404, "Student not found.")
 
     guardian = (
-        supabase.table("guardians").select("*").eq("id", payload.guardian_id).execute().data
+        supabase.table("guardians")
+        .select("*")
+        .eq("id", payload.guardian_id)
+        .execute()
+        .data
     )
     if not guardian:
         raise HTTPException(404, "Guardian not found.")
