@@ -25,6 +25,16 @@ export const metadata: Metadata = {
   title: "Dreston Elite Montessori School",
   description:
     "Attendance, morning feeding money, school fees, and parent messaging for Dreston Elite Montessori School.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Dreston Elite",
+  },
+};
+
+export const viewport = {
+  themeColor: "#6B429F",
 };
 
 export default function RootLayout({

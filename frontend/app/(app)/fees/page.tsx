@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { api, ApiError } from "@/lib/api";
+import { removeFromOutbox } from "@/lib/offline/db";
 import {
   ClassItem,
   FeePayment,
@@ -188,16 +189,31 @@ export default function FeesPage() {
     }
     setSaving(true);
     try {
-      await api.post("/fees/payments", {
+      const result = await api.post<FeePayment>("/fees/payments", {
         student_id: payment.student_id,
         term_id: termId || null,
         amount: parseFloat(payment.amount),
         payment_method: payment.payment_method,
         reference: payment.reference || null,
       });
-      toast.success("Payment recorded.");
       setPayment({ student_id: "", amount: "", payment_method: "cash", reference: "" });
-      if (termId) loadTermData(termId);
+
+      if (result._offline) {
+        // Not on the server yet — reflect it locally instead of refetching,
+        // which would just show the old (cached) list and hide this payment.
+        toast("Saved on this device — will sync once you're back online.", { icon: "📴" });
+        setPayments((prev) => [result, ...prev]);
+        setBalances((prev) =>
+          prev.map((b) =>
+            b.student_id === result.student_id
+              ? { ...b, amount_paid: b.amount_paid + result.amount, balance: b.balance - result.amount }
+              : b
+          )
+        );
+      } else {
+        toast.success("Payment recorded.");
+        if (termId) loadTermData(termId);
+      }
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not record this payment.");
     } finally {
@@ -205,13 +221,18 @@ export default function FeesPage() {
     }
   }
 
-  async function handleDeletePayment(paymentId: string) {
+  async function handleDeletePayment(payment: FeePayment) {
     if (!confirm("Delete this payment? This can't be undone.")) return;
-    setDeletingPaymentId(paymentId);
+    setDeletingPaymentId(payment.id);
     try {
-      await api.delete(`/fees/payments/${paymentId}`);
-      toast.success("Payment deleted.");
-      loadTermData(termId);
+      if (payment._offline) {
+        await removeFromOutbox(payment.id.replace("offline-", ""));
+        setPayments((prev) => prev.filter((p) => p.id !== payment.id));
+      } else {
+        await api.delete(`/fees/payments/${payment.id}`);
+        toast.success("Payment deleted.");
+        loadTermData(termId);
+      }
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not delete this payment.");
     } finally {
@@ -520,11 +541,15 @@ export default function FeesPage() {
                 <td className="px-5 py-3">GHS {p.amount.toFixed(2)}</td>
                 <td className="px-5 py-3 capitalize">{p.payment_method}</td>
                 <td className="px-5 py-3 text-plum-800/60">
-                  {new Date(p.paid_at).toLocaleDateString()}
+                  {p._offline ? (
+                    <span className="pill bg-gold-400/30 text-gold-500">⏳ waiting to sync</span>
+                  ) : (
+                    new Date(p.paid_at).toLocaleDateString()
+                  )}
                 </td>
                 <td className="px-5 py-3">
                   <button
-                    onClick={() => handleDeletePayment(p.id)}
+                    onClick={() => handleDeletePayment(p)}
                     disabled={deletingPaymentId === p.id}
                     className="text-xs text-red-500 hover:text-red-700 hover:underline"
                   >

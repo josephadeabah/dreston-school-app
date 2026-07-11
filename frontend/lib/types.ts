@@ -28,6 +28,7 @@ export interface AttendanceRecord {
   attendance_date: string;
   status: "present" | "absent" | "late" | "excused";
   note: string | null;
+  _offline?: boolean; // true if this was recorded offline and hasn't synced yet
 }
 
 export interface FeedingCollection {
@@ -37,6 +38,7 @@ export interface FeedingCollection {
   amount: number;
   payment_method: "cash" | "momo" | "bank" | "card";
   note: string | null;
+  _offline?: boolean;
 }
 
 export interface FeeTerm {
@@ -61,6 +63,7 @@ export interface FeePayment {
   payment_method: "cash" | "momo" | "bank" | "card";
   reference: string | null;
   paid_at: string;
+  _offline?: boolean;
 }
 
 export interface StudentFeeBalance {

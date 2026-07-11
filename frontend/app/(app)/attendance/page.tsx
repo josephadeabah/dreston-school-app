@@ -84,7 +84,11 @@ export default function AttendancePage() {
       records.forEach((r) => (nowSaved[r.student_id] = r));
       setSavedRecords(nowSaved);
       setLastSavedAt(new Date().toLocaleTimeString());
-      toast.success("Attendance saved.");
+      if (records[0]?._offline) {
+        toast("Saved on this device — will sync once you're back online.", { icon: "📴" });
+      } else {
+        toast.success("Attendance saved.");
+      }
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not save attendance.");
     } finally {
@@ -212,12 +216,14 @@ export default function AttendancePage() {
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2">
-                          {isSaved ? (
+                          {record?._offline ? (
+                            <span className="text-gold-500 text-xs">⏳ waiting to sync</span>
+                          ) : isSaved ? (
                             <span className="text-green-600 text-xs">✓ saved</span>
                           ) : (
                             <span className="text-gold-500 text-xs">pending</span>
                           )}
-                          {record && (
+                          {record && !record._offline && (
                             <button
                               onClick={() => handleDelete(s.id)}
                               disabled={deletingId === record.id}

@@ -119,7 +119,11 @@ create table if not exists fee_payments (
   reference text,                     -- receipt / transaction reference
   received_by uuid references staff_profiles(id),
   paid_at timestamptz not null default now(),
-  note text
+  note text,
+  -- Set by the frontend when a payment was recorded offline and synced
+  -- later, so replaying it twice (e.g. a retry after a dropped connection)
+  -- never creates a duplicate payment. NULL for normal online payments.
+  client_id text unique
 );
 
 -- ----------------------------------------------------------------------------

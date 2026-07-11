@@ -103,7 +103,7 @@ Visit `http://localhost:3000`.
 
 ### Deploying the frontend cheaply
 
-**Vercel's free tier** is the natural fit for Next.js and costs nothing for a single school's traffic. Push this repo to GitHub, import it into Vercel, set the three env vars from `.env.example`, and deploy.
+**Vercel's free tier** is the natural fit for Next.js and costs nothing for a single school's traffic. Push this repo to GitHub, import it into Vercel, set the three env vars from `.env.example`, and deploy. Vercel serves everything over HTTPS by default, which is required for the offline service worker to run (see [Working offline](#5-working-offline)) — no extra setup needed on your part.
 
 ---
 
@@ -135,7 +135,32 @@ To fix it:
 
 A student can have more than one guardian linked, and a guardian can be linked to more than one student (siblings). The Students page shows at a glance which children still need a guardian linked.
 
-## 5. Deleting records
+## 5. Working offline
+
+Staff often mark attendance and collect feeding money right at the gate, where wifi may not reach. The app is built to keep working there:
+
+**What works without a connection:**
+- Marking attendance for a class
+- Recording (or updating) feeding money for a student
+- Recording a fee payment
+- Viewing whatever students, classes, guardians, and attendance/fee data was already loaded on that device before it went offline
+
+While offline, a banner appears at the top of the app ("You're offline — new records are being saved on this device"), and each new record shows a "⏳ waiting to sync" badge instead of the usual saved/paid status. Nothing is lost — every change is written to the browser's local storage (IndexedDB) immediately, and the interface updates right away so staff can keep working normally.
+
+**Syncing back up:** the moment the device reconnects, the app automatically sends everything that was queued, in the order it was recorded, and the badges clear as each item confirms. There's also a manual "Sync now" button and a details panel (via "View details" on the banner) showing exactly what's pending, so staff can retry or discard anything that fails for a real reason (like a fee payment for a student who was since removed).
+
+**What still needs a connection:** sending SMS/email messages home. Broadcasts aren't queued for later — the app shows a clear message instead, since silently sending a message hours after it was composed (once someone happens to reconnect) could be surprising or send outdated information.
+
+**A practical note on administrative screens:** adding students, guardians, fee terms, or fee-per-class amounts will also save safely if you're offline — but unlike attendance/feeding/fees, those lists won't visually refresh with the new entry until the sync completes (you'll just see it appear once you're back online). For that reason, it's best to do that kind of setup work when you have a connection, and save the offline capability for the daily gate-side routine it's really meant for.
+
+**How this is built**, if you're curious or extending it:
+- A service worker (via [Serwist](https://serwist.pages.dev)) caches the app's own pages/scripts/styles, so the app can still *open* with no connection at all, not just keep working mid-session. This only activates in production builds (`npm run build && npm start`) — it's intentionally disabled in `npm run dev` so you don't fight a stale cache while developing. **The very first time**, a device needs one successful online visit so the service worker can install; after that, it can open offline.
+- All school data (students, attendance, fees, etc.) is cached in IndexedDB independently of the service worker, in `frontend/lib/offline/`.
+- Every write (`POST`/`PATCH`/`DELETE`) that fails because the device is offline — or because the request never reaches the server at all — is queued in an "outbox" instead of failing. `lib/offline/queue.ts` builds a realistic placeholder response so the screen updates immediately.
+- `lib/offline/sync.ts` replays the outbox in order once you're back online. Fee payments carry a `client_id` the backend uses to make sure a retried sync can never record the same payment twice (`fee_payments.client_id`, unique) — attendance and feeding money are naturally safe to retry since the database already treats "one record per student per day" as an update, not a new row.
+- To test it yourself: build and run the production server (`npm run build && npm start`), open the app in Chrome, then in DevTools → Application → Service Workers, tick "Offline" (or just turn off your wifi) and try marking attendance or recording a payment.
+
+## 6. Deleting records
 
 Every record type you can add — attendance marks, feeding money, fee terms, fee-per-class amounts, fee payments, students, classes, guardians, and sent messages — can also be deleted from the same screen it was created on. A few notes:
 
@@ -146,7 +171,7 @@ Every record type you can add — attendance marks, feeding money, fee terms, fe
 - Only `admin` can delete classes, staff accounts, and sent-message logs. `admin`/`accountant` can delete fee terms, fee structures, and fee payments. Feeding and attendance records can be deleted by whoever is allowed to record them in the first place.
 - If you already ran the original `schema.sql` before this feature was added, run `supabase/migrations/001_relax_delete_constraints.sql` once — it relaxes two foreign keys so term/guardian deletes never get silently blocked by unrelated history. Fresh projects can skip it; it's already folded into `schema.sql`.
 
-## 6. Staff roles
+## 7. Staff roles
 
 | Role | Can do |
 |---|---|
@@ -159,7 +184,7 @@ Roles are enforced on the backend (`app/core/security.py`), not just hidden in t
 
 ---
 
-## 7. Why this scales and stays maintainable
+## 8. Why this scales and stays maintainable
 
 - **Clear separation**: frontend never touches the database directly (except reading its own staff profile) — all rules live in one backend, so behavior can't drift between clients.
 - **Managed Postgres**: Supabase handles backups, scaling, and connection pooling; the schema uses proper foreign keys, indexes, and constraints instead of loose JSON blobs.
@@ -171,7 +196,7 @@ Roles are enforced on the backend (`app/core/security.py`), not just hidden in t
 
 ## What's implemented vs. what to add next
 
-**Working now**: student & guardian records, class management, daily attendance marking (pre-fills existing marks for the day and shows a saved/pending state per student), feeding money collection with daily totals **and a live per-student "already paid today" column**, fee terms and per-class fee amounts **manageable entirely from the Fees page** (no direct database access needed), fee payments with balance tracking, SMS/email broadcast messaging with delivery status, role-based staff accounts, dashboard summary.
+**Working now**: student & guardian records (with guardian-to-student linking, which is what makes messaging able to reach anyone), class management, daily attendance marking (pre-fills existing marks for the day and shows a saved/pending state per student), feeding money collection with daily totals **and a live per-student "already paid today" column**, fee terms and per-class fee amounts **manageable entirely from the Fees page** (no direct database access needed), fee payments with balance tracking, SMS/email broadcast messaging with delivery status, role-based staff accounts, dashboard summary, deletion for every record type, and **offline support** for attendance, feeding money, and fee payments — see [Working offline](#5-working-offline) above.
 
 **Natural next additions**: a receipts/PDF export for fee payments, a parent-facing portal (read-only view of their own child), push notifications, and multi-school support (the schema is already shaped to add a `school_id` column if Dreston Elite ever opens a second campus).
 

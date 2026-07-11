@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { api, ApiError } from "@/lib/api";
+import { removeFromOutbox } from "@/lib/offline/db";
 import { FeedingCollection, Student } from "@/lib/types";
 
 export default function FeedingPage() {
@@ -63,7 +64,11 @@ export default function FeedingPage() {
         amount,
         payment_method: method,
       });
-      toast.success("Feeding money recorded.");
+      if (record._offline) {
+        toast("Saved on this device — will sync once you're back online.", { icon: "📴" });
+      } else {
+        toast.success("Feeding money recorded.");
+      }
       setAmounts({ ...amounts, [studentId]: "" });
       // Reflect it immediately in the table without a full reload.
       setCollectedByStudent((prev) => ({ ...prev, [studentId]: record }));
@@ -74,10 +79,15 @@ export default function FeedingPage() {
     }
   }
 
-  async function handleDelete(studentId: string, recordId: string) {
+  async function handleDelete(studentId: string, record: FeedingCollection) {
     if (!confirm("Delete this feeding money record? This can't be undone.")) return;
     try {
-      await api.delete(`/feeding/${recordId}`);
+      if (record._offline) {
+        // Hasn't synced yet — just cancel the queued write.
+        await removeFromOutbox(record.id.replace("offline-", ""));
+      } else {
+        await api.delete(`/feeding/${record.id}`);
+      }
       toast.success("Record deleted.");
       setCollectedByStudent((prev) => {
         const next = { ...prev };
@@ -172,11 +182,18 @@ export default function FeedingPage() {
                       <span className="text-plum-800/30 text-xs">…</span>
                     ) : existing ? (
                       <span className="inline-flex items-center gap-2">
-                        <span className="pill bg-green-100 text-green-700">
+                        <span
+                          className={`pill ${
+                            existing._offline
+                              ? "bg-gold-400/30 text-gold-500"
+                              : "bg-green-100 text-green-700"
+                          }`}
+                        >
+                          {existing._offline && "⏳ "}
                           GHS {existing.amount.toFixed(2)} · {existing.payment_method}
                         </span>
                         <button
-                          onClick={() => handleDelete(s.id, existing.id)}
+                          onClick={() => handleDelete(s.id, existing)}
                           className="text-xs text-red-500 hover:text-red-700 hover:underline"
                           title="Delete this record"
                         >

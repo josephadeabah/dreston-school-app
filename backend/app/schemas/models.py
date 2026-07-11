@@ -134,6 +134,9 @@ class FeePaymentCreate(BaseModel):
     payment_method: Literal["cash", "momo", "bank", "card"] = "cash"
     reference: Optional[str] = None
     note: Optional[str] = None
+    # Set by the frontend for payments recorded while offline, so re-sending
+    # the same queued payment (e.g. after a retry) never double-records it.
+    client_id: Optional[str] = None
 
 
 class FeePaymentOut(FeePaymentCreate):
