@@ -19,15 +19,19 @@ router = APIRouter(prefix="/fees", tags=["school fees"])
 @router.get("/terms", response_model=list[FeeTermOut])
 async def list_terms(user: CurrentUser = Depends(get_current_user)):
     supabase = get_supabase()
-    res = supabase.table("fee_terms").select("*").order("start_date", desc=True).execute()
+    res = (
+        supabase.table("fee_terms").select("*").order("start_date", desc=True).execute()
+    )
     return res.data
 
 
 @router.post("/terms", response_model=FeeTermOut)
 async def create_term(
-    payload: FeeTermCreate, user: CurrentUser = Depends(require_roles("admin", "accountant"))
+    payload: FeeTermCreate,
+    user: CurrentUser = Depends(require_roles("admin", "accountant")),
 ):
     supabase = get_supabase()
+    # ✅ Use mode="json" to auto-convert date objects to strings
     data = payload.model_dump(mode="json")
     res = supabase.table("fee_terms").insert(data).execute()
     if not res.data:
@@ -42,9 +46,12 @@ async def set_fee_structure(
     user: CurrentUser = Depends(require_roles("admin", "accountant")),
 ):
     supabase = get_supabase()
-    res = supabase.table("fee_structures").upsert(
-        payload.model_dump(), on_conflict="term_id,class_id"
-    ).execute()
+    # ✅ Use mode="json" (no date fields but good practice)
+    res = (
+        supabase.table("fee_structures")
+        .upsert(payload.model_dump(mode="json"), on_conflict="term_id,class_id")
+        .execute()
+    )
     if not res.data:
         raise HTTPException(500, "Could not save the fee structure.")
     return res.data[0]
@@ -85,6 +92,7 @@ async def record_payment(
     user: CurrentUser = Depends(require_roles("admin", "accountant", "front_desk")),
 ):
     supabase = get_supabase()
+    # ✅ Use mode="json" to auto-convert date/datetime objects to strings
     data = payload.model_dump(mode="json")
     data["received_by"] = user.id
     res = supabase.table("fee_payments").insert(data).execute()
@@ -99,9 +107,13 @@ async def term_balances(term_id: str, user: CurrentUser = Depends(get_current_us
     """Amount due vs paid per student for a given term."""
     supabase = get_supabase()
 
-    students = supabase.table("students").select("id, full_name, class_id").eq(
-        "is_active", True
-    ).execute().data
+    students = (
+        supabase.table("students")
+        .select("id, full_name, class_id")
+        .eq("is_active", True)
+        .execute()
+        .data
+    )
     structures = {
         s["class_id"]: s["amount_due"]
         for s in supabase.table("fee_structures")
@@ -110,13 +122,19 @@ async def term_balances(term_id: str, user: CurrentUser = Depends(get_current_us
         .execute()
         .data
     }
-    payments = supabase.table("fee_payments").select("student_id, amount").eq(
-        "term_id", term_id
-    ).execute().data
+    payments = (
+        supabase.table("fee_payments")
+        .select("student_id, amount")
+        .eq("term_id", term_id)
+        .execute()
+        .data
+    )
 
     paid_by_student: dict[str, float] = {}
     for p in payments:
-        paid_by_student[p["student_id"]] = paid_by_student.get(p["student_id"], 0) + p["amount"]
+        paid_by_student[p["student_id"]] = (
+            paid_by_student.get(p["student_id"], 0) + p["amount"]
+        )
 
     result = []
     for s in students:

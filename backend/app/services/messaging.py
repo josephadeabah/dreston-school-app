@@ -47,13 +47,19 @@ async def send_sms(phone: str, message: str) -> tuple[bool, str | None, str | No
             recipients = payload.get("SMSMessageData", {}).get("Recipients", [])
             if recipients and recipients[0].get("status") == "Success":
                 return True, recipients[0].get("messageId"), None
-            error = recipients[0].get("status") if recipients else "Unknown SMS provider error."
+            error = (
+                recipients[0].get("status")
+                if recipients
+                else "Unknown SMS provider error."
+            )
             return False, None, error
     except Exception as exc:  # noqa: BLE001 — surfaced to the caller, not swallowed
         return False, None, str(exc)
 
 
-async def send_email(to_email: str, subject: str, body: str) -> tuple[bool, str | None, str | None]:
+async def send_email(
+    to_email: str, subject: str, body: str
+) -> tuple[bool, str | None, str | None]:
     """Returns (success, provider_message_id, error)."""
     if not settings.RESEND_API_KEY:
         return False, None, "Email is not configured yet (missing RESEND_API_KEY)."

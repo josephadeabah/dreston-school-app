@@ -28,21 +28,25 @@ async def list_feeding_collections(
 @router.post("", response_model=FeedingCollectionOut)
 async def record_feeding_collection(
     payload: FeedingCollectionCreate,
-    user: CurrentUser = Depends(require_roles("admin", "teacher", "front_desk", "accountant")),
+    user: CurrentUser = Depends(
+        require_roles("admin", "teacher", "front_desk", "accountant")
+    ),
 ):
     supabase = get_supabase()
-    # ✅ Fixed: Convert to dict and manually map fields
+    # ✅ Already fixed with manual mapping
     data = {
         "student_id": payload.student_id,
-        "date": payload.collection_date.isoformat(),  # ✅ Changed from payload.date to payload.collection_date
+        "date": payload.collection_date.isoformat(),
         "amount": payload.amount,
         "payment_method": payload.payment_method,
         "note": payload.note,
         "collected_by": user.id,
     }
-    res = supabase.table("feeding_collections").upsert(
-        data, on_conflict="student_id,date"
-    ).execute()
+    res = (
+        supabase.table("feeding_collections")
+        .upsert(data, on_conflict="student_id,date")
+        .execute()
+    )
     if not res.data:
         raise HTTPException(500, "Could not record this feeding collection.")
     return res.data[0]
@@ -58,4 +62,8 @@ async def daily_summary(on_date: date, user: CurrentUser = Depends(get_current_u
         .execute()
     )
     total = sum(r["amount"] for r in res.data)
-    return {"date": on_date, "total_collected": total, "number_of_students": len(res.data)}
+    return {
+        "date": on_date.isoformat(),
+        "total_collected": total,
+        "number_of_students": len(res.data),
+    }

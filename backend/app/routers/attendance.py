@@ -39,7 +39,7 @@ async def bulk_mark_attendance(
         {
             "student_id": r.student_id,
             "class_id": payload.class_id,
-            "date": payload.attendance_date.isoformat(),  # ✅ Changed from payload.date to payload.attendance_date
+            "date": payload.attendance_date.isoformat(),  # ✅ Already using isoformat()
             "status": r.status,
             "note": r.note,
             "marked_by": user.id,
@@ -49,7 +49,9 @@ async def bulk_mark_attendance(
     if not rows:
         raise HTTPException(400, "No attendance records were provided.")
 
-    res = supabase.table("attendance_records").upsert(
-        rows, on_conflict="student_id,date"
-    ).execute()
+    res = (
+        supabase.table("attendance_records")
+        .upsert(rows, on_conflict="student_id,date")
+        .execute()
+    )
     return res.data
