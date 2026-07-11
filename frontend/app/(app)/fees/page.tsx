@@ -3,13 +3,24 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { api, ApiError } from "@/lib/api";
-import { FeeTerm, Student, StudentFeeBalance } from "@/lib/types";
+import { ClassItem, FeeTerm, Student, StudentFeeBalance } from "@/lib/types";
 
 export default function FeesPage() {
   const [terms, setTerms] = useState<FeeTerm[]>([]);
   const [termId, setTermId] = useState("");
   const [balances, setBalances] = useState<StudentFeeBalance[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [loadingBalances, setLoadingBalances] = useState(false);
+
+  const [showTermForm, setShowTermForm] = useState(false);
+  const [showStructureForm, setShowStructureForm] = useState(false);
+
+  const [termForm, setTermForm] = useState({ name: "", start_date: "", end_date: "" });
+  const [structureForm, setStructureForm] = useState({ class_id: "", amount_due: "" });
+  const [savingTerm, setSavingTerm] = useState(false);
+  const [savingStructure, setSavingStructure] = useState(false);
+
   const [payment, setPayment] = useState({
     student_id: "",
     amount: "",
@@ -18,21 +29,94 @@ export default function FeesPage() {
   });
   const [saving, setSaving] = useState(false);
 
+  async function loadTerms() {
+    const t = await api.get<FeeTerm[]>("/fees/terms");
+    setTerms(t);
+    return t;
+  }
+
+  async function loadBalances(id: string) {
+    if (!id) {
+      setBalances([]);
+      return;
+    }
+    setLoadingBalances(true);
+    try {
+      const b = await api.get<StudentFeeBalance[]>(`/fees/balances/${id}`);
+      setBalances(b);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not load fee balances.");
+    } finally {
+      setLoadingBalances(false);
+    }
+  }
+
   useEffect(() => {
-    api.get<FeeTerm[]>("/fees/terms").then((t) => {
-      setTerms(t);
+    loadTerms().then((t) => {
       if (t.length) setTermId(t[0].id);
     });
     api.get<Student[]>("/students").then(setStudents);
+    api.get<ClassItem[]>("/classes").then(setClasses);
   }, []);
 
   useEffect(() => {
-    if (!termId) return;
-    api
-      .get<StudentFeeBalance[]>(`/fees/balances/${termId}`)
-      .then(setBalances)
-      .catch((e) => toast.error(e.message));
+    loadBalances(termId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [termId]);
+
+  async function handleCreateTerm(e: React.FormEvent) {
+    e.preventDefault();
+    if (!termForm.name.trim()) {
+      toast.error("Give the term a name, e.g. 'Term 1 2026/2027'.");
+      return;
+    }
+    setSavingTerm(true);
+    try {
+      const created = await api.post<FeeTerm>("/fees/terms", {
+        name: termForm.name,
+        start_date: termForm.start_date || null,
+        end_date: termForm.end_date || null,
+      });
+      toast.success(`"${created.name}" was created.`);
+      setTermForm({ name: "", start_date: "", end_date: "" });
+      setShowTermForm(false);
+      const updated = await loadTerms();
+      setTermId(created.id);
+      void updated;
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not create this term.");
+    } finally {
+      setSavingTerm(false);
+    }
+  }
+
+  async function handleSetStructure(e: React.FormEvent) {
+    e.preventDefault();
+    if (!termId) {
+      toast.error("Create or select a term first.");
+      return;
+    }
+    if (!structureForm.class_id || !structureForm.amount_due) {
+      toast.error("Choose a class and enter the amount due.");
+      return;
+    }
+    setSavingStructure(true);
+    try {
+      await api.post("/fees/structures", {
+        term_id: termId,
+        class_id: structureForm.class_id,
+        amount_due: parseFloat(structureForm.amount_due),
+      });
+      toast.success("Fee amount set for this class.");
+      setStructureForm({ class_id: "", amount_due: "" });
+      setShowStructureForm(false);
+      loadBalances(termId);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not save the fee structure.");
+    } finally {
+      setSavingStructure(false);
+    }
+  }
 
   async function handlePayment(e: React.FormEvent) {
     e.preventDefault();
@@ -51,9 +135,7 @@ export default function FeesPage() {
       });
       toast.success("Payment recorded.");
       setPayment({ student_id: "", amount: "", payment_method: "cash", reference: "" });
-      if (termId) {
-        api.get<StudentFeeBalance[]>(`/fees/balances/${termId}`).then(setBalances);
-      }
+      if (termId) loadBalances(termId);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not record this payment.");
     } finally {
@@ -73,15 +155,62 @@ export default function FeesPage() {
             Track fee payments and outstanding balances per term.
           </p>
         </div>
-        <select className="input max-w-xs" value={termId} onChange={(e) => setTermId(e.target.value)}>
-          {terms.length === 0 && <option>No terms yet — create one in Supabase</option>}
-          {terms.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <select
+            className="input max-w-xs"
+            value={termId}
+            onChange={(e) => setTermId(e.target.value)}
+          >
+            {terms.length === 0 && <option value="">No terms yet — create one →</option>}
+            {terms.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <button className="btn-secondary" onClick={() => setShowTermForm((v) => !v)}>
+            {showTermForm ? "Cancel" : "+ New term"}
+          </button>
+        </div>
       </header>
+
+      {showTermForm && (
+        <form onSubmit={handleCreateTerm} className="card mb-6 grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+          <div className="sm:col-span-2">
+            <label className="label">Term name</label>
+            <input
+              className="input"
+              required
+              placeholder="e.g. Term 1 2026/2027"
+              value={termForm.name}
+              onChange={(e) => setTermForm({ ...termForm, name: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="label">Start date</label>
+            <input
+              type="date"
+              className="input"
+              value={termForm.start_date}
+              onChange={(e) => setTermForm({ ...termForm, start_date: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="label">End date</label>
+            <input
+              type="date"
+              className="input"
+              value={termForm.end_date}
+              onChange={(e) => setTermForm({ ...termForm, end_date: e.target.value })}
+            />
+          </div>
+          <div className="sm:col-span-4">
+            <button type="submit" className="btn-primary" disabled={savingTerm}>
+              {savingTerm ? "Creating…" : "Create term"}
+            </button>
+          </div>
+        </form>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="card">
@@ -109,6 +238,56 @@ export default function FeesPage() {
           </p>
         </div>
       </div>
+
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-display font-semibold text-plum-800">Fee amount per class</h2>
+        <button
+          className="btn-secondary text-xs"
+          disabled={!termId}
+          onClick={() => setShowStructureForm((v) => !v)}
+        >
+          {showStructureForm ? "Cancel" : "+ Set class fee"}
+        </button>
+      </div>
+
+      {showStructureForm && (
+        <form
+          onSubmit={handleSetStructure}
+          className="card mb-6 grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"
+        >
+          <div>
+            <label className="label">Class</label>
+            <select
+              className="input"
+              value={structureForm.class_id}
+              onChange={(e) => setStructureForm({ ...structureForm, class_id: e.target.value })}
+            >
+              <option value="">Select class</option>
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">Amount due (GHS)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              className="input"
+              value={structureForm.amount_due}
+              onChange={(e) => setStructureForm({ ...structureForm, amount_due: e.target.value })}
+            />
+          </div>
+          <div>
+            <button type="submit" className="btn-primary" disabled={savingStructure}>
+              {savingStructure ? "Saving…" : "Save fee amount"}
+            </button>
+          </div>
+        </form>
+      )}
 
       <form onSubmit={handlePayment} className="card mb-6 grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
         <div className="sm:col-span-2">
@@ -170,26 +349,34 @@ export default function FeesPage() {
             </tr>
           </thead>
           <tbody>
-            {balances.map((b) => (
-              <tr key={b.student_id} className="border-t border-blush-100">
-                <td className="px-5 py-3 font-medium">{b.full_name}</td>
-                <td className="px-5 py-3">GHS {b.amount_due.toFixed(2)}</td>
-                <td className="px-5 py-3">GHS {b.amount_paid.toFixed(2)}</td>
-                <td className="px-5 py-3">
-                  <span
-                    className={`pill ${
-                      b.balance > 0 ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
-                    }`}
-                  >
-                    GHS {b.balance.toFixed(2)}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {balances.length === 0 && (
+            {loadingBalances && (
               <tr>
                 <td colSpan={4} className="px-5 py-8 text-center text-plum-800/50">
-                  No fee data yet for this term.
+                  Loading…
+                </td>
+              </tr>
+            )}
+            {!loadingBalances &&
+              balances.map((b) => (
+                <tr key={b.student_id} className="border-t border-blush-100">
+                  <td className="px-5 py-3 font-medium">{b.full_name}</td>
+                  <td className="px-5 py-3">GHS {b.amount_due.toFixed(2)}</td>
+                  <td className="px-5 py-3">GHS {b.amount_paid.toFixed(2)}</td>
+                  <td className="px-5 py-3">
+                    <span
+                      className={`pill ${
+                        b.balance > 0 ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
+                      }`}
+                    >
+                      GHS {b.balance.toFixed(2)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            {!loadingBalances && balances.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-5 py-8 text-center text-plum-800/50">
+                  No fee data yet for this term. Set a fee amount per class above to get started.
                 </td>
               </tr>
             )}

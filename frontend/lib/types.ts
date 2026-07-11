@@ -25,7 +25,7 @@ export interface AttendanceRecord {
   id: string;
   student_id: string;
   class_id: string | null;
-  date: string;
+  attendance_date: string;
   status: "present" | "absent" | "late" | "excused";
   note: string | null;
 }
@@ -33,7 +33,7 @@ export interface AttendanceRecord {
 export interface FeedingCollection {
   id: string;
   student_id: string;
-  date: string;
+  collection_date: string;
   amount: number;
   payment_method: "cash" | "momo" | "bank" | "card";
   note: string | null;

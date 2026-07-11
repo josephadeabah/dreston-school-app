@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { api, ApiError } from "@/lib/api";
-import { Student } from "@/lib/types";
+import { FeedingCollection, Student } from "@/lib/types";
 
 export default function FeedingPage() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -12,15 +12,25 @@ export default function FeedingPage() {
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [method, setMethod] = useState<"cash" | "momo" | "bank" | "card">("cash");
   const [saving, setSaving] = useState<string | null>(null);
-  const [summary, setSummary] = useState<{ total_collected: number; number_of_students: number } | null>(
-    null
+  // What each student has already had recorded for the selected date —
+  // this is what makes "money added for a student" visible in the table.
+  const [collectedByStudent, setCollectedByStudent] = useState<Record<string, FeedingCollection>>(
+    {}
   );
+  const [loadingCollections, setLoadingCollections] = useState(false);
 
-  async function loadSummary() {
-    const s = await api.get<{ total_collected: number; number_of_students: number }>(
-      `/feeding/summary/daily?on_date=${date}`
-    );
-    setSummary(s);
+  async function loadCollectionsForDate() {
+    setLoadingCollections(true);
+    try {
+      const rows = await api.get<FeedingCollection[]>(`/feeding?on_date=${date}`);
+      const byStudent: Record<string, FeedingCollection> = {};
+      rows.forEach((r) => (byStudent[r.student_id] = r));
+      setCollectedByStudent(byStudent);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not load today's collections.");
+    } finally {
+      setLoadingCollections(false);
+    }
   }
 
   useEffect(() => {
@@ -31,9 +41,12 @@ export default function FeedingPage() {
   }, [search]);
 
   useEffect(() => {
-    loadSummary().catch(() => {});
+    loadCollectionsForDate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
+
+  const totalCollected = Object.values(collectedByStudent).reduce((sum, r) => sum + r.amount, 0);
+  const studentsPaidCount = Object.keys(collectedByStudent).length;
 
   async function handleRecord(studentId: string) {
     const amountStr = amounts[studentId];
@@ -44,15 +57,16 @@ export default function FeedingPage() {
     }
     setSaving(studentId);
     try {
-      await api.post("/feeding", {
+      const record = await api.post<FeedingCollection>("/feeding", {
         student_id: studentId,
-        date,
+        collection_date: date,
         amount,
         payment_method: method,
       });
       toast.success("Feeding money recorded.");
       setAmounts({ ...amounts, [studentId]: "" });
-      loadSummary();
+      // Reflect it immediately in the table without a full reload.
+      setCollectedByStudent((prev) => ({ ...prev, [studentId]: record }));
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not record this collection.");
     } finally {
@@ -75,7 +89,7 @@ export default function FeedingPage() {
             Collected today
           </p>
           <p className="font-display text-3xl font-semibold text-gold-500 mt-2">
-            GHS {summary ? summary.total_collected.toFixed(2) : "0.00"}
+            GHS {totalCollected.toFixed(2)}
           </p>
         </div>
         <div className="card">
@@ -83,7 +97,7 @@ export default function FeedingPage() {
             Students who paid
           </p>
           <p className="font-display text-3xl font-semibold text-violet-600 mt-2">
-            {summary ? summary.number_of_students : 0}
+            {studentsPaidCount}
           </p>
         </div>
       </div>
@@ -127,39 +141,54 @@ export default function FeedingPage() {
           <thead className="bg-blush-100 text-plum-800/70 text-left">
             <tr>
               <th className="px-5 py-3 font-semibold">Student</th>
+              <th className="px-5 py-3 font-semibold">Collected today</th>
               <th className="px-5 py-3 font-semibold">Amount (GHS)</th>
               <th className="px-5 py-3 font-semibold"></th>
             </tr>
           </thead>
           <tbody>
-            {students.map((s) => (
-              <tr key={s.id} className="border-t border-blush-100">
-                <td className="px-5 py-3 font-medium">{s.full_name}</td>
-                <td className="px-5 py-3">
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="input w-32"
-                    placeholder="0.00"
-                    value={amounts[s.id] ?? ""}
-                    onChange={(e) => setAmounts({ ...amounts, [s.id]: e.target.value })}
-                  />
-                </td>
-                <td className="px-5 py-3">
-                  <button
-                    className="btn-secondary"
-                    disabled={saving === s.id}
-                    onClick={() => handleRecord(s.id)}
-                  >
-                    {saving === s.id ? "Saving…" : "Record"}
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {students.map((s) => {
+              const existing = collectedByStudent[s.id];
+              return (
+                <tr key={s.id} className="border-t border-blush-100">
+                  <td className="px-5 py-3 font-medium">{s.full_name}</td>
+                  <td className="px-5 py-3">
+                    {loadingCollections ? (
+                      <span className="text-plum-800/30 text-xs">…</span>
+                    ) : existing ? (
+                      <span className="pill bg-green-100 text-green-700">
+                        GHS {existing.amount.toFixed(2)} · {existing.payment_method}
+                      </span>
+                    ) : (
+                      <span className="pill bg-blush-50 text-plum-800/40">Not paid yet</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="input w-32"
+                      placeholder={existing ? "Update amount" : "0.00"}
+                      value={amounts[s.id] ?? ""}
+                      onChange={(e) => setAmounts({ ...amounts, [s.id]: e.target.value })}
+                    />
+                  </td>
+                  <td className="px-5 py-3">
+                    <button
+                      className="btn-secondary"
+                      disabled={saving === s.id}
+                      onClick={() => handleRecord(s.id)}
+                    >
+                      {saving === s.id ? "Saving…" : existing ? "Update" : "Record"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
             {students.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-5 py-8 text-center text-plum-800/50">
+                <td colSpan={4} className="px-5 py-8 text-center text-plum-800/50">
                   No students found.
                 </td>
               </tr>
