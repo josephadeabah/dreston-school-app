@@ -21,7 +21,7 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> CurrentUser:
     token = credentials.credentials
-    
+
     # Let Supabase verify the token
     supabase = get_supabase()
     try:
@@ -29,14 +29,14 @@ async def get_current_user(
         user = supabase.auth.get_user(token)
         user_id = user.user.id
         email = user.user.email
-        
+
     except Exception as e:
         print(f"Auth error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token. Please log in again.",
         )
-    
+
     # Now get the staff profile
     result = (
         supabase.table("staff_profiles")
