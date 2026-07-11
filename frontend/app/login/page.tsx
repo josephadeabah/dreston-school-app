@@ -54,7 +54,7 @@ export default function LoginPage() {
             </div>
             <div>
               <div className="text-sm font-medium text-gold-300/80 uppercase tracking-wider">
-                Established 2010
+                Established 2022
               </div>
               <div className="text-xs text-white/60">
                 Excellence in Montessori Education
