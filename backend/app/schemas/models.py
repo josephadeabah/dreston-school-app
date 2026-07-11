@@ -28,6 +28,11 @@ class GuardianOut(GuardianCreate):
     id: str
 
 
+class GuardianLinkCreate(BaseModel):
+    guardian_id: str
+    is_primary: bool = False
+
+
 # --- Students ------------------------------------------------------------------
 class StudentCreate(BaseModel):
     admission_no: str

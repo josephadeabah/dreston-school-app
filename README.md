@@ -18,7 +18,7 @@ A full-stack school management system for daily operations:
 │  (frontend)       │◀─────────────────── │   (backend)        │◀───────────────────── │  Postgres   │
 └─────────────────┘                      └──────────────────┘                        └────────────┘
         │                                          │
-        │ Supabase Auth (login only)                │ Africa's Talking (SMS) / Resend (Email)
+        │ Supabase Auth (login only)                │ Arkesel (SMS) / Resend (Email)
         ▼                                          ▼
    staff sign-in                             parent broadcasts
 ```
@@ -26,7 +26,7 @@ A full-stack school management system for daily operations:
 - **Frontend (Next.js 14, App Router, TypeScript, Tailwind)** — the staff-facing app. Handles login via Supabase Auth directly, then calls the backend for everything else.
 - **Backend (FastAPI, Python)** — all business logic and every database read/write. Verifies each request's Supabase JWT, checks the staff member's role, then talks to Postgres using the Supabase **service role** key (never exposed to the browser).
 - **Database (Supabase Postgres)** — one managed Postgres instance, Row Level Security enabled, schema in `supabase/schema.sql`.
-- **SMS (Africa's Talking)** and **Email (Resend)** — both have free/low-cost tiers well suited to a single school's message volume.
+- **SMS (Arkesel)** and **Email (Resend)** — both have free/low-cost tiers well suited to a single school's message volume, and Arkesel connects directly to Ghana's mobile networks.
 
 This split keeps the database locked down (the browser never holds a privileged key) while staying cheap: Supabase free tier, a small always-on backend box (or free-tier Render/Railway), and pay-as-you-go SMS.
 
@@ -111,10 +111,11 @@ Visit `http://localhost:3000`.
 
 Parent messaging works without these — broadcasts just get recorded as "failed" with a clear reason until you add keys, so nothing breaks in the meantime.
 
-**SMS — Africa's Talking** (great value for Ghana/West Africa):
-1. Sign up free at [africastalking.com](https://africastalking.com).
-2. Start in **sandbox** mode (free, for testing) — use `AT_USERNAME=sandbox`.
-3. When ready to send real texts, create a live app, buy credit (pay-as-you-go, a few pesewas per SMS), and switch `AT_USERNAME` to your live username.
+**SMS — Arkesel** (Ghana-based, with direct connections to MTN, Telecel, and AirtelTigo):
+1. Sign up free at [arkesel.com](https://arkesel.com) — no card required.
+2. Generate an API key from your dashboard and put it in `ARKESEL_API_KEY`.
+3. Leave `ARKESEL_SANDBOX=true` while you build and test — Arkesel validates and "sends" the message without actually delivering it or spending credit, so you can test the whole flow safely.
+4. When you're ready to send real texts to parents: register a sender ID (e.g. your school's name, max 11 characters, no spaces — this is what appears as the sender on parents' phones), buy credit (pay-as-you-go, from about GHS 0.02/SMS), and set `ARKESEL_SANDBOX=false`.
 
 **Email — Resend**:
 1. Sign up free at [resend.com](https://resend.com) — 3,000 emails/month free.
@@ -123,9 +124,29 @@ Parent messaging works without these — broadcasts just get recorded as "failed
 
 Guardian phone numbers should be stored in international format, e.g. `+233241234567`.
 
----
+### Linking guardians so messages actually reach someone
 
-## 5. Staff roles
+Adding a student does **not** automatically give them a guardian — a new student starts with nobody linked, and a broadcast to that student (or their class, or the whole school) will only reach guardians who are actually linked. If you send a message and get back *"No guardians matched this audience — nothing was sent,"* that's what happened.
+
+To fix it:
+1. Go to **Guardians** in the sidebar and add the parent/guardian (name, phone, email, relationship).
+2. Go to **Students**, find the child, and click the guardian pill in their row (it'll say "No guardians linked" in red until you do this) to expand the panel.
+3. Pick the guardian from the dropdown and click **Link**.
+
+A student can have more than one guardian linked, and a guardian can be linked to more than one student (siblings). The Students page shows at a glance which children still need a guardian linked.
+
+## 5. Deleting records
+
+Every record type you can add — attendance marks, feeding money, fee terms, fee-per-class amounts, fee payments, students, classes, guardians, and sent messages — can also be deleted from the same screen it was created on. A few notes:
+
+- Deletes always ask for confirmation first, since they can't be undone.
+- **Fee terms**: deleting a term removes its per-class fee amounts, but any payments already recorded stay in the system — they just lose their term label instead of disappearing.
+- **Classes**: you can't delete a class that still has students, attendance, or fee records attached — move or remove those first. This is a safety rail, not a bug.
+- **Students**: "Remove" takes a student off the active roster but keeps their attendance/fee/feeding history for your records — it doesn't erase the child from the database.
+- Only `admin` can delete classes, staff accounts, and sent-message logs. `admin`/`accountant` can delete fee terms, fee structures, and fee payments. Feeding and attendance records can be deleted by whoever is allowed to record them in the first place.
+- If you already ran the original `schema.sql` before this feature was added, run `supabase/migrations/001_relax_delete_constraints.sql` once — it relaxes two foreign keys so term/guardian deletes never get silently blocked by unrelated history. Fresh projects can skip it; it's already folded into `schema.sql`.
+
+## 6. Staff roles
 
 | Role | Can do |
 |---|---|
@@ -138,7 +159,7 @@ Roles are enforced on the backend (`app/core/security.py`), not just hidden in t
 
 ---
 
-## 6. Why this scales and stays maintainable
+## 7. Why this scales and stays maintainable
 
 - **Clear separation**: frontend never touches the database directly (except reading its own staff profile) — all rules live in one backend, so behavior can't drift between clients.
 - **Managed Postgres**: Supabase handles backups, scaling, and connection pooling; the schema uses proper foreign keys, indexes, and constraints instead of loose JSON blobs.
@@ -150,6 +171,10 @@ Roles are enforced on the backend (`app/core/security.py`), not just hidden in t
 
 ## What's implemented vs. what to add next
 
-**Working now**: student & guardian records, class management, daily attendance marking, feeding money collection with daily totals, fee terms/structures/payments with balance tracking, SMS/email broadcast messaging with delivery status, role-based staff accounts, dashboard summary.
+**Working now**: student & guardian records, class management, daily attendance marking (pre-fills existing marks for the day and shows a saved/pending state per student), feeding money collection with daily totals **and a live per-student "already paid today" column**, fee terms and per-class fee amounts **manageable entirely from the Fees page** (no direct database access needed), fee payments with balance tracking, SMS/email broadcast messaging with delivery status, role-based staff accounts, dashboard summary.
 
 **Natural next additions**: a receipts/PDF export for fee payments, a parent-facing portal (read-only view of their own child), push notifications, and multi-school support (the schema is already shaped to add a `school_id` column if Dreston Elite ever opens a second campus).
+
+### A note on the `date` field naming
+
+`attendance_records` and `feeding_collections` both use a database column called `date`. In the Python schemas, that field is named `attendance_date` / `collection_date` instead of `date`, so it doesn't collide with the `date` **type** imported from `datetime` at the top of `models.py` — `date: date = ...` works fine in Pydantic, but a distinct name is clearer and avoids any confusion when reading the code. A `Field(alias="date")` on each maps the friendly Python name back to the real column automatically, in both directions — so the API accepts/returns `attendance_date`/`collection_date` while Supabase keeps its simple `date` column.

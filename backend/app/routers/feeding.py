@@ -28,20 +28,14 @@ async def list_feeding_collections(
 @router.post("", response_model=FeedingCollectionOut)
 async def record_feeding_collection(
     payload: FeedingCollectionCreate,
-    user: CurrentUser = Depends(
-        require_roles("admin", "teacher", "front_desk", "accountant")
-    ),
+    user: CurrentUser = Depends(require_roles("admin", "teacher", "front_desk", "accountant")),
 ):
     supabase = get_supabase()
-    data = payload.model_dump(
-        mode="json", by_alias=True
-    )  # emits 'date', matching the DB column
+    data = payload.model_dump(mode="json", by_alias=True)  # emits 'date', matching the DB column
     data["collected_by"] = user.id
-    res = (
-        supabase.table("feeding_collections")
-        .upsert(data, on_conflict="student_id,date")
-        .execute()
-    )
+    res = supabase.table("feeding_collections").upsert(
+        data, on_conflict="student_id,date"
+    ).execute()
     if not res.data:
         raise HTTPException(500, "Could not record this feeding collection.")
     return res.data[0]
@@ -50,9 +44,7 @@ async def record_feeding_collection(
 @router.delete("/{record_id}")
 async def delete_feeding_collection(
     record_id: str,
-    user: CurrentUser = Depends(
-        require_roles("admin", "teacher", "front_desk", "accountant")
-    ),
+    user: CurrentUser = Depends(require_roles("admin", "teacher", "front_desk", "accountant")),
 ):
     supabase = get_supabase()
     res = supabase.table("feeding_collections").delete().eq("id", record_id).execute()
@@ -71,8 +63,4 @@ async def daily_summary(on_date: date, user: CurrentUser = Depends(get_current_u
         .execute()
     )
     total = sum(r["amount"] for r in res.data)
-    return {
-        "date": on_date,
-        "total_collected": total,
-        "number_of_students": len(res.data),
-    }
+    return {"date": on_date, "total_collected": total, "number_of_students": len(res.data)}

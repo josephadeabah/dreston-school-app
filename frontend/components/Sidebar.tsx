@@ -7,6 +7,7 @@ import { StaffProfile } from "@/lib/useAuth";
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: "◆" },
   { href: "/students", label: "Students", icon: "🎓" },
+  { href: "/guardians", label: "Guardians", icon: "👪" },
   { href: "/attendance", label: "Attendance", icon: "✓" },
   { href: "/feeding", label: "Feeding Money", icon: "🍽" },
   { href: "/fees", label: "School Fees", icon: "💳" },

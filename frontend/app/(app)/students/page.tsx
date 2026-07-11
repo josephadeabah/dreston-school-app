@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
+import Link from "next/link";
 import toast from "react-hot-toast";
 import { api, ApiError } from "@/lib/api";
-import { ClassItem, Student } from "@/lib/types";
+import { ClassItem, Guardian, Student } from "@/lib/types";
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [allGuardians, setAllGuardians] = useState<Guardian[]>([]);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     admission_no: "",
     full_name: "",
@@ -18,13 +21,24 @@ export default function StudentsPage() {
     class_id: "",
   });
 
+  // Guardian panel state — which student's panel is open, their linked
+  // guardians, and the pending "link an existing guardian" selection.
+  const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
+  const [guardiansByStudent, setGuardiansByStudent] = useState<Record<string, Guardian[]>>({});
+  const [loadingGuardiansFor, setLoadingGuardiansFor] = useState<string | null>(null);
+  const [selectedGuardianToLink, setSelectedGuardianToLink] = useState("");
+  const [linking, setLinking] = useState(false);
+  const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
+
   async function load() {
-    const [s, c] = await Promise.all([
+    const [s, c, g] = await Promise.all([
       api.get<Student[]>(`/students${search ? `?search=${encodeURIComponent(search)}` : ""}`),
       api.get<ClassItem[]>("/classes"),
+      api.get<Guardian[]>("/guardians"),
     ]);
     setStudents(s);
     setClasses(c);
+    setAllGuardians(g);
   }
 
   useEffect(() => {
@@ -47,7 +61,9 @@ export default function StudentsPage() {
         class_id: form.class_id || null,
         guardian_ids: [],
       });
-      toast.success(`${form.full_name} was added.`);
+      toast.success(
+        `${form.full_name} was added. Don't forget to link a guardian below so messages can reach home.`
+      );
       setForm({ admission_no: "", full_name: "", date_of_birth: "", class_id: "" });
       setShowForm(false);
       load();
@@ -57,8 +73,6 @@ export default function StudentsPage() {
       setSaving(false);
     }
   }
-
-  const [removingId, setRemovingId] = useState<string | null>(null);
 
   async function handleRemove(student: Student) {
     if (
@@ -76,6 +90,65 @@ export default function StudentsPage() {
       toast.error(e instanceof ApiError ? e.message : "Could not remove this student.");
     } finally {
       setRemovingId(null);
+    }
+  }
+
+  async function toggleGuardianPanel(studentId: string) {
+    if (expandedStudentId === studentId) {
+      setExpandedStudentId(null);
+      return;
+    }
+    setExpandedStudentId(studentId);
+    setSelectedGuardianToLink("");
+    if (!guardiansByStudent[studentId]) {
+      setLoadingGuardiansFor(studentId);
+      try {
+        const g = await api.get<Guardian[]>(`/students/${studentId}/guardians`);
+        setGuardiansByStudent((prev) => ({ ...prev, [studentId]: g }));
+      } catch (e) {
+        toast.error(e instanceof ApiError ? e.message : "Could not load guardians.");
+      } finally {
+        setLoadingGuardiansFor(null);
+      }
+    }
+  }
+
+  async function handleLinkGuardian(studentId: string) {
+    if (!selectedGuardianToLink) {
+      toast.error("Choose a guardian to link first.");
+      return;
+    }
+    setLinking(true);
+    try {
+      const linked = await api.post<Guardian>(`/students/${studentId}/guardians`, {
+        guardian_id: selectedGuardianToLink,
+      });
+      setGuardiansByStudent((prev) => ({
+        ...prev,
+        [studentId]: [...(prev[studentId] ?? []), linked],
+      }));
+      setSelectedGuardianToLink("");
+      toast.success(`${linked.full_name} linked — they'll now receive messages for this child.`);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not link this guardian.");
+    } finally {
+      setLinking(false);
+    }
+  }
+
+  async function handleUnlinkGuardian(studentId: string, guardianId: string) {
+    setUnlinkingId(guardianId);
+    try {
+      await api.delete(`/students/${studentId}/guardians/${guardianId}`);
+      setGuardiansByStudent((prev) => ({
+        ...prev,
+        [studentId]: (prev[studentId] ?? []).filter((g) => g.id !== guardianId),
+      }));
+      toast.success("Guardian unlinked from this student.");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not unlink this guardian.");
+    } finally {
+      setUnlinkingId(null);
     }
   }
 
@@ -157,31 +230,138 @@ export default function StudentsPage() {
               <th className="px-5 py-3 font-semibold">Admission #</th>
               <th className="px-5 py-3 font-semibold">Name</th>
               <th className="px-5 py-3 font-semibold">Class</th>
+              <th className="px-5 py-3 font-semibold">Guardians</th>
               <th className="px-5 py-3 font-semibold w-20"></th>
             </tr>
           </thead>
           <tbody>
-            {students.map((s) => (
-              <tr key={s.id} className="border-t border-blush-100">
-                <td className="px-5 py-3 font-mono text-xs text-plum-800/70">
-                  {s.admission_no}
-                </td>
-                <td className="px-5 py-3 font-medium">{s.full_name}</td>
-                <td className="px-5 py-3">{classNameFor(s.class_id)}</td>
-                <td className="px-5 py-3">
-                  <button
-                    onClick={() => handleRemove(s)}
-                    disabled={removingId === s.id}
-                    className="text-xs text-red-500 hover:text-red-700 hover:underline"
-                  >
-                    {removingId === s.id ? "…" : "Remove"}
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {students.map((s) => {
+              const isExpanded = expandedStudentId === s.id;
+              const linkedGuardians = guardiansByStudent[s.id];
+              const linkedCount = linkedGuardians?.length ?? null;
+              const availableToLink = allGuardians.filter(
+                (g) => !linkedGuardians?.some((lg) => lg.id === g.id)
+              );
+
+              return (
+                <Fragment key={s.id}>
+                  <tr className="border-t border-blush-100">
+                    <td className="px-5 py-3 font-mono text-xs text-plum-800/70">
+                      {s.admission_no}
+                    </td>
+                    <td className="px-5 py-3 font-medium">{s.full_name}</td>
+                    <td className="px-5 py-3">{classNameFor(s.class_id)}</td>
+                    <td className="px-5 py-3">
+                      <button
+                        onClick={() => toggleGuardianPanel(s.id)}
+                        className={`pill ${
+                          linkedCount === 0
+                            ? "bg-red-100 text-red-700"
+                            : linkedCount
+                            ? "bg-green-100 text-green-700"
+                            : "bg-blush-50 text-plum-800/40"
+                        }`}
+                      >
+                        {linkedCount === null
+                          ? "View guardians"
+                          : linkedCount === 0
+                          ? "No guardians linked"
+                          : `${linkedCount} linked`}
+                      </button>
+                    </td>
+                    <td className="px-5 py-3">
+                      <button
+                        onClick={() => handleRemove(s)}
+                        disabled={removingId === s.id}
+                        className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                      >
+                        {removingId === s.id ? "…" : "Remove"}
+                      </button>
+                    </td>
+                  </tr>
+
+                  {isExpanded && (
+                    <tr className="bg-blush-50/60 border-t border-blush-100">
+                      <td colSpan={5} className="px-5 py-4">
+                        {loadingGuardiansFor === s.id ? (
+                          <p className="text-plum-800/50 text-xs">Loading guardians…</p>
+                        ) : (
+                          <div className="space-y-3">
+                            {linkedGuardians && linkedGuardians.length > 0 ? (
+                              <ul className="space-y-1.5">
+                                {linkedGuardians.map((g) => (
+                                  <li
+                                    key={g.id}
+                                    className="flex items-center justify-between bg-white rounded-lg px-3 py-2 text-sm"
+                                  >
+                                    <span>
+                                      <span className="font-medium">{g.full_name}</span>{" "}
+                                      <span className="text-plum-800/50 font-mono text-xs">
+                                        {g.phone}
+                                      </span>{" "}
+                                      <span className="text-plum-800/40 text-xs capitalize">
+                                        ({g.relationship})
+                                      </span>
+                                    </span>
+                                    <button
+                                      onClick={() => handleUnlinkGuardian(s.id, g.id)}
+                                      disabled={unlinkingId === g.id}
+                                      className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                                    >
+                                      {unlinkingId === g.id ? "…" : "Unlink"}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-sm text-red-600">
+                                No guardians linked yet — messages sent to this student&apos;s
+                                guardians won&apos;t reach anyone until you link one.
+                              </p>
+                            )}
+
+                            <div className="flex flex-wrap items-center gap-2">
+                              <select
+                                className="input max-w-xs"
+                                value={selectedGuardianToLink}
+                                onChange={(e) => setSelectedGuardianToLink(e.target.value)}
+                              >
+                                <option value="">
+                                  {availableToLink.length === 0
+                                    ? "No more guardians to link"
+                                    : "Link an existing guardian…"}
+                                </option>
+                                {availableToLink.map((g) => (
+                                  <option key={g.id} value={g.id}>
+                                    {g.full_name} · {g.phone}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                className="btn-secondary text-xs"
+                                disabled={linking || !selectedGuardianToLink}
+                                onClick={() => handleLinkGuardian(s.id)}
+                              >
+                                {linking ? "Linking…" : "Link"}
+                              </button>
+                              <Link
+                                href="/guardians"
+                                className="text-xs text-violet-600 hover:underline"
+                              >
+                                + Add a new guardian
+                              </Link>
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
             {students.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-5 py-8 text-center text-plum-800/50">
+                <td colSpan={5} className="px-5 py-8 text-center text-plum-800/50">
                   No students found. Try adding one above.
                 </td>
               </tr>

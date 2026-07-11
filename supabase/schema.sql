@@ -113,7 +113,7 @@ create table if not exists fee_structures (
 create table if not exists fee_payments (
   id uuid primary key default uuid_generate_v4(),
   student_id uuid not null references students(id) on delete cascade,
-  term_id uuid references fee_terms(id),
+  term_id uuid references fee_terms(id) on delete set null,
   amount numeric(10,2) not null check (amount > 0),
   payment_method text not null default 'cash' check (payment_method in ('cash', 'momo', 'bank', 'card')),
   reference text,                     -- receipt / transaction reference
@@ -142,7 +142,7 @@ create table if not exists broadcasts (
 create table if not exists broadcast_recipients (
   id uuid primary key default uuid_generate_v4(),
   broadcast_id uuid not null references broadcasts(id) on delete cascade,
-  guardian_id uuid not null references guardians(id),
+  guardian_id uuid not null references guardians(id) on delete cascade,
   channel text not null,
   status text not null default 'pending' check (status in ('pending', 'sent', 'failed')),
   provider_message_id text,

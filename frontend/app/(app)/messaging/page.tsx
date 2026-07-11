@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import toast from "react-hot-toast";
 import { api, ApiError } from "@/lib/api";
 import { Broadcast, ClassItem, Student } from "@/lib/types";
@@ -169,6 +170,16 @@ export default function MessagingPage() {
             </div>
           )}
         </div>
+
+        {(form.audience === "student" || form.audience === "class" || form.audience === "all") && (
+          <p className="text-xs text-plum-800/50">
+            Only reaches guardians who are linked to a student.{" "}
+            <Link href="/students" className="text-violet-600 hover:underline">
+              Link guardians from the Students page
+            </Link>{" "}
+            if a message doesn&apos;t seem to reach anyone.
+          </p>
+        )}
 
         <button type="submit" className="btn-primary" disabled={sending}>
           {sending ? "Sending…" : "Send message"}

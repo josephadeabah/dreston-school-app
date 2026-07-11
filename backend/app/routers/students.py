@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.security import CurrentUser, get_current_user, require_roles
 from app.core.supabase_client import get_supabase
-from app.schemas.models import StudentCreate, StudentOut
+from app.schemas.models import GuardianLinkCreate, GuardianOut, StudentCreate, StudentOut
 
 router = APIRouter(prefix="/students", tags=["students"])
 
@@ -38,13 +38,11 @@ async def create_student(
     user: CurrentUser = Depends(require_roles("admin", "front_desk")),
 ):
     supabase = get_supabase()
-    # ✅ Fixed: Added mode="json" to convert date objects to strings
-    data = payload.model_dump(exclude={"guardian_ids"}, mode="json")
+    data = payload.model_dump(exclude={"guardian_ids"})
     res = supabase.table("students").insert(data).execute()
     if not res.data:
         raise HTTPException(
-            400,
-            "Could not add this student. The admission number may already be in use.",
+            400, "Could not add this student. The admission number may already be in use."
         )
     student = res.data[0]
 
@@ -63,7 +61,72 @@ async def deactivate_student(
     student_id: str, user: CurrentUser = Depends(require_roles("admin"))
 ):
     supabase = get_supabase()
-    supabase.table("students").update({"is_active": False}).eq(
-        "id", student_id
-    ).execute()
+    supabase.table("students").update({"is_active": False}).eq("id", student_id).execute()
     return {"message": "Student marked inactive."}
+
+
+# --- Guardian links ---------------------------------------------------------
+# A student's guardians are who broadcasts (SMS/email) actually get sent to,
+# so these three endpoints are what makes messaging usable in practice.
+
+
+@router.get("/{student_id}/guardians", response_model=list[GuardianOut])
+async def list_student_guardians(
+    student_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    supabase = get_supabase()
+    links = (
+        supabase.table("student_guardians")
+        .select("guardian_id")
+        .eq("student_id", student_id)
+        .execute()
+        .data
+    )
+    guardian_ids = [l["guardian_id"] for l in links]
+    if not guardian_ids:
+        return []
+    res = supabase.table("guardians").select("*").in_("id", guardian_ids).execute()
+    return res.data
+
+
+@router.post("/{student_id}/guardians", response_model=GuardianOut)
+async def link_guardian_to_student(
+    student_id: str,
+    payload: GuardianLinkCreate,
+    user: CurrentUser = Depends(require_roles("admin", "front_desk")),
+):
+    supabase = get_supabase()
+
+    student = supabase.table("students").select("id").eq("id", student_id).execute().data
+    if not student:
+        raise HTTPException(404, "Student not found.")
+
+    guardian = (
+        supabase.table("guardians").select("*").eq("id", payload.guardian_id).execute().data
+    )
+    if not guardian:
+        raise HTTPException(404, "Guardian not found.")
+
+    supabase.table("student_guardians").upsert(
+        {
+            "student_id": student_id,
+            "guardian_id": payload.guardian_id,
+            "is_primary": payload.is_primary,
+        },
+        on_conflict="student_id,guardian_id",
+    ).execute()
+
+    return guardian[0]
+
+
+@router.delete("/{student_id}/guardians/{guardian_id}")
+async def unlink_guardian_from_student(
+    student_id: str,
+    guardian_id: str,
+    user: CurrentUser = Depends(require_roles("admin", "front_desk")),
+):
+    supabase = get_supabase()
+    supabase.table("student_guardians").delete().eq("student_id", student_id).eq(
+        "guardian_id", guardian_id
+    ).execute()
+    return {"message": "Guardian removed from this student."}
