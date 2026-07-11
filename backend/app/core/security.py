@@ -1,8 +1,8 @@
 from dataclasses import dataclass
+import jwt  # pyjwt (replaces jose)
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, JWTError
 
 from app.core.config import settings
 from app.core.supabase_client import get_supabase
@@ -20,28 +20,23 @@ class CurrentUser:
 
 def _decode_token(token: str) -> dict:
     try:
-        # ✅ Try HS256 first (Supabase default)
-        try:
-            payload = jwt.decode(
-                token,
-                settings.SUPABASE_JWT_SECRET,
-                algorithms=["HS256"],
-                options={"verify_aud": False},
-            )
-            return payload
-        except JWTError:
-            # ✅ If HS256 fails, try RS256 (for some Supabase setups)
-            payload = jwt.decode(
-                token,
-                settings.SUPABASE_JWT_SECRET,
-                algorithms=["RS256"],
-                options={"verify_aud": False},
-            )
-            return payload
-    except JWTError as e:
+        # ✅ pyjwt handles Supabase tokens correctly
+        payload = jwt.decode(
+            token,
+            settings.SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            options={"verify_aud": False, "verify_signature": True},
+        )
+        return payload
+    except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid or expired session. Error: {str(e)}",
+            detail="Token has expired. Please log in again.",
+        )
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid or expired session. Please log in again. Error: {str(e)}",
         )
 
 
@@ -53,6 +48,7 @@ async def get_current_user(
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid session token.")
 
+    # Get email from the correct location in the token
     email = payload.get("email") or payload.get("user_metadata", {}).get("email")
     
     supabase = get_supabase()
