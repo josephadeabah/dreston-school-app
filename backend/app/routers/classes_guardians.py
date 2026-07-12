@@ -20,7 +20,8 @@ async def create_class(
     payload: ClassCreate, user: CurrentUser = Depends(require_roles("admin"))
 ):
     supabase = get_supabase()
-    res = supabase.table("classes").insert(payload.model_dump()).execute()
+    # ✅ FIXED: Added mode="json" to handle date/datetime serialization
+    res = supabase.table("classes").insert(payload.model_dump(mode="json")).execute()
     if not res.data:
         raise HTTPException(500, "Could not create the class. Please try again.")
     return res.data[0]
@@ -72,7 +73,8 @@ async def create_guardian(
     user: CurrentUser = Depends(require_roles("admin", "front_desk")),
 ):
     supabase = get_supabase()
-    res = supabase.table("guardians").insert(payload.model_dump()).execute()
+    # ✅ FIXED: Added mode="json" to handle date/datetime serialization
+    res = supabase.table("guardians").insert(payload.model_dump(mode="json")).execute()
     if not res.data:
         raise HTTPException(
             400, "Could not add this guardian. The phone number may already exist."

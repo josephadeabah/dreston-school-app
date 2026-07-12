@@ -34,6 +34,7 @@ async def record_feeding_collection(
     user: CurrentUser = Depends(require_roles("admin", "teacher", "front_desk", "accountant")),
 ):
     supabase = get_supabase()
+    # ✅ FIXED: Using mode="json" and by_alias=True to handle date serialization
     data = payload.model_dump(mode="json", by_alias=True)  # emits 'date', matching the DB column
     data["collected_by"] = user.id
     res = supabase.table("feeding_collections").upsert(

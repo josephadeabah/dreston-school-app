@@ -62,7 +62,8 @@ async def create_student(
     user: CurrentUser = Depends(require_roles("admin", "front_desk")),
 ):
     supabase = get_supabase()
-    data = payload.model_dump(exclude={"guardian_ids"})
+    # ✅ FIXED: Added mode="json" to handle date/datetime serialization
+    data = payload.model_dump(exclude={"guardian_ids"}, mode="json")
     res = supabase.table("students").insert(data).execute()
     if not res.data:
         raise HTTPException(

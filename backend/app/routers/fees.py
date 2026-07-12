@@ -30,6 +30,7 @@ async def create_term(
     payload: FeeTermCreate, user: CurrentUser = Depends(require_roles("admin", "accountant"))
 ):
     supabase = get_supabase()
+    # ✅ FIXED: Added mode="json" to handle date/datetime serialization
     data = payload.model_dump(mode="json")
     res = supabase.table("fee_terms").insert(data).execute()
     if not res.data:
@@ -55,8 +56,9 @@ async def set_fee_structure(
     user: CurrentUser = Depends(require_roles("admin", "accountant")),
 ):
     supabase = get_supabase()
+    # ✅ FIXED: Added mode="json" to handle date/datetime serialization
     res = supabase.table("fee_structures").upsert(
-        payload.model_dump(), on_conflict="term_id,class_id"
+        payload.model_dump(mode="json"), on_conflict="term_id,class_id"
     ).execute()
     if not res.data:
         raise HTTPException(500, "Could not save the fee structure.")
@@ -125,6 +127,7 @@ async def record_payment(
             # instead of creating a duplicate.
             return existing[0]
 
+    # ✅ FIXED: Added mode="json" to handle date/datetime serialization
     data = payload.model_dump(mode="json")
     data["received_by"] = user.id
     res = supabase.table("fee_payments").insert(data).execute()

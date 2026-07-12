@@ -113,7 +113,8 @@ async def create_broadcast(
 ):
     supabase = get_supabase()
 
-    broadcast_data = payload.model_dump(exclude={"channel"})
+    # ✅ FIXED: Added mode="json" to handle date/datetime serialization
+    broadcast_data = payload.model_dump(exclude={"channel"}, mode="json")
     broadcast_data["channel"] = payload.channel
     broadcast_data["sent_by"] = user.id
     broadcast_data["status"] = "sending"
