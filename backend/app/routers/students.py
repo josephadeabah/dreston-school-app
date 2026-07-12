@@ -67,7 +67,8 @@ async def create_student(
     res = supabase.table("students").insert(data).execute()
     if not res.data:
         raise HTTPException(
-            400, "Could not add this student. The admission number may already be in use."
+            400,
+            "Could not add this student. The admission number may already be in use.",
         )
     student = res.data[0]
 
@@ -86,7 +87,9 @@ async def deactivate_student(
     student_id: str, user: CurrentUser = Depends(require_roles("admin"))
 ):
     supabase = get_supabase()
-    supabase.table("students").update({"is_active": False}).eq("id", student_id).execute()
+    supabase.table("students").update({"is_active": False}).eq(
+        "id", student_id
+    ).execute()
     return {"message": "Student marked inactive."}
 
 
@@ -122,12 +125,18 @@ async def link_guardian_to_student(
 ):
     supabase = get_supabase()
 
-    student = supabase.table("students").select("id").eq("id", student_id).execute().data
+    student = (
+        supabase.table("students").select("id").eq("id", student_id).execute().data
+    )
     if not student:
         raise HTTPException(404, "Student not found.")
 
     guardian = (
-        supabase.table("guardians").select("*").eq("id", payload.guardian_id).execute().data
+        supabase.table("guardians")
+        .select("*")
+        .eq("id", payload.guardian_id)
+        .execute()
+        .data
     )
     if not guardian:
         raise HTTPException(404, "Guardian not found.")

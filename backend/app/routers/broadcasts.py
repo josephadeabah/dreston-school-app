@@ -76,7 +76,9 @@ async def _dispatch_broadcast(broadcast_id: str, channel: str, body: str, title:
         error = None
 
         if r["channel"] == "sms" and guardian.get("phone"):
-            success, msg_id, error = await send_sms(guardian["phone"], f"{title}: {body}")
+            success, msg_id, error = await send_sms(
+                guardian["phone"], f"{title}: {body}"
+            )
         elif r["channel"] == "email" and guardian.get("email"):
             success, msg_id, error = await send_email(guardian["email"], title, body)
         else:
@@ -100,7 +102,11 @@ async def list_broadcasts(
     pagination: Pagination = Depends(), user: CurrentUser = Depends(get_current_user)
 ):
     supabase = get_supabase()
-    q = supabase.table("broadcasts").select("*", count="exact").order("created_at", desc=True)
+    q = (
+        supabase.table("broadcasts")
+        .select("*", count="exact")
+        .order("created_at", desc=True)
+    )
     res = pagination.apply(q).execute()
     return pagination.wrap(res.data, res.count or 0)
 
@@ -129,7 +135,9 @@ async def create_broadcast(
         supabase.table("broadcasts").update({"status": "failed"}).eq(
             "id", broadcast["id"]
         ).execute()
-        raise HTTPException(400, "No guardians matched this audience — nothing was sent.")
+        raise HTTPException(
+            400, "No guardians matched this audience — nothing was sent."
+        )
 
     channels = ["sms", "email"] if payload.channel == "both" else [payload.channel]
     recipient_rows = [
@@ -143,7 +151,11 @@ async def create_broadcast(
 
     if payload.channel != "in_app":
         background_tasks.add_task(
-            _dispatch_broadcast, broadcast["id"], payload.channel, payload.body, payload.title
+            _dispatch_broadcast,
+            broadcast["id"],
+            payload.channel,
+            payload.body,
+            payload.title,
         )
     else:
         supabase.table("broadcasts").update({"status": "sent"}).eq(

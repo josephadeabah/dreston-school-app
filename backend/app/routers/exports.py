@@ -29,7 +29,9 @@ def _respond(file_bytes: bytes, fmt: Format, filename_stem: str) -> StreamingRes
     )
 
 
-def _build(fmt: Format, title: str, subtitle: str | None, headers: list[str], rows: list[list]):
+def _build(
+    fmt: Format, title: str, subtitle: str | None, headers: list[str], rows: list[list]
+):
     str_rows = [[("" if v is None else str(v)) for v in row] for row in rows]
     if fmt == "pdf":
         return build_pdf(title, subtitle, headers, str_rows)
@@ -43,7 +45,10 @@ async def export_students(
     user: CurrentUser = Depends(get_current_user),
 ):
     supabase = get_supabase()
-    classes = {c["id"]: c["name"] for c in supabase.table("classes").select("id, name").execute().data}
+    classes = {
+        c["id"]: c["name"]
+        for c in supabase.table("classes").select("id, name").execute().data
+    }
 
     q = supabase.table("students").select("*").eq("is_active", True)
     if class_id:
@@ -52,9 +57,12 @@ async def export_students(
 
     subtitle = f"Class: {classes.get(class_id, '—')}" if class_id else "All classes"
     rows = [
-        [s["admission_no"], s["full_name"], classes.get(s["class_id"], "—")] for s in students
+        [s["admission_no"], s["full_name"], classes.get(s["class_id"], "—")]
+        for s in students
     ]
-    file_bytes = _build(fmt, "Student Roster", subtitle, ["Admission #", "Full Name", "Class"], rows)
+    file_bytes = _build(
+        fmt, "Student Roster", subtitle, ["Admission #", "Full Name", "Class"], rows
+    )
     return _respond(file_bytes, fmt, "dreston-elite-student-roster")
 
 
@@ -66,7 +74,9 @@ async def export_attendance(
     user: CurrentUser = Depends(get_current_user),
 ):
     supabase = get_supabase()
-    class_row = supabase.table("classes").select("name").eq("id", class_id).execute().data
+    class_row = (
+        supabase.table("classes").select("name").eq("id", class_id).execute().data
+    )
     class_name = class_row[0]["name"] if class_row else "—"
 
     students = (
@@ -117,11 +127,16 @@ async def export_feeding(
         .data
     )
     students = {
-        s["id"]: s["full_name"] for s in supabase.table("students").select("id, full_name").execute().data
+        s["id"]: s["full_name"]
+        for s in supabase.table("students").select("id, full_name").execute().data
     }
 
     rows = [
-        [students.get(r["student_id"], "Unknown"), f"{r['amount']:.2f}", r["payment_method"]]
+        [
+            students.get(r["student_id"], "Unknown"),
+            f"{r['amount']:.2f}",
+            r["payment_method"],
+        ]
         for r in records
     ]
     total = sum(r["amount"] for r in records)
@@ -145,7 +160,9 @@ async def export_fees(
     user: CurrentUser = Depends(get_current_user),
 ):
     supabase = get_supabase()
-    term_row = supabase.table("fee_terms").select("name").eq("id", term_id).execute().data
+    term_row = (
+        supabase.table("fee_terms").select("name").eq("id", term_id).execute().data
+    )
     term_name = term_row[0]["name"] if term_row else "—"
 
     students = (
@@ -173,7 +190,9 @@ async def export_fees(
     )
     paid_by_student: dict[str, float] = {}
     for p in payments:
-        paid_by_student[p["student_id"]] = paid_by_student.get(p["student_id"], 0) + p["amount"]
+        paid_by_student[p["student_id"]] = (
+            paid_by_student.get(p["student_id"], 0) + p["amount"]
+        )
 
     rows = []
     total_due = total_paid = 0.0
@@ -182,11 +201,16 @@ async def export_fees(
         paid = paid_by_student.get(s["id"], 0)
         total_due += due
         total_paid += paid
-        rows.append(
-            [s["full_name"], f"{due:.2f}", f"{paid:.2f}", f"{due - paid:.2f}"]
-        )
+        rows.append([s["full_name"], f"{due:.2f}", f"{paid:.2f}", f"{due - paid:.2f}"])
     rows.append(["", "", "", ""])
-    rows.append(["TOTAL", f"{total_due:.2f}", f"{total_paid:.2f}", f"{total_due - total_paid:.2f}"])
+    rows.append(
+        [
+            "TOTAL",
+            f"{total_due:.2f}",
+            f"{total_paid:.2f}",
+            f"{total_due - total_paid:.2f}",
+        ]
+    )
 
     file_bytes = _build(
         fmt,
@@ -204,13 +228,24 @@ async def export_guardians(
     user: CurrentUser = Depends(get_current_user),
 ):
     supabase = get_supabase()
-    guardians = supabase.table("guardians").select("*").order("full_name").execute().data
+    guardians = (
+        supabase.table("guardians").select("*").order("full_name").execute().data
+    )
     rows = [
-        [g["full_name"], g["phone"], g.get("email") or "—", g.get("relationship", "—").capitalize()]
+        [
+            g["full_name"],
+            g["phone"],
+            g.get("email") or "—",
+            g.get("relationship", "—").capitalize(),
+        ]
         for g in guardians
     ]
     file_bytes = _build(
-        fmt, "Guardians Directory", None, ["Full Name", "Phone", "Email", "Relationship"], rows
+        fmt,
+        "Guardians Directory",
+        None,
+        ["Full Name", "Phone", "Email", "Relationship"],
+        rows,
     )
     return _respond(file_bytes, fmt, "dreston-elite-guardians")
 
@@ -221,7 +256,9 @@ async def export_staff(
     user: CurrentUser = Depends(require_roles("admin")),
 ):
     supabase = get_supabase()
-    staff = supabase.table("staff_profiles").select("*").order("full_name").execute().data
+    staff = (
+        supabase.table("staff_profiles").select("*").order("full_name").execute().data
+    )
     rows = [
         [
             s["full_name"],
@@ -231,5 +268,7 @@ async def export_staff(
         ]
         for s in staff
     ]
-    file_bytes = _build(fmt, "Staff Directory", None, ["Full Name", "Role", "Phone", "Status"], rows)
+    file_bytes = _build(
+        fmt, "Staff Directory", None, ["Full Name", "Role", "Phone", "Status"], rows
+    )
     return _respond(file_bytes, fmt, "dreston-elite-staff")

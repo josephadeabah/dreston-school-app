@@ -55,10 +55,16 @@ def build_pdf(
     )
 
     school_style = ParagraphStyle(
-        "School", fontName="Helvetica-Bold", fontSize=15, textColor=colors.HexColor(VIOLET)
+        "School",
+        fontName="Helvetica-Bold",
+        fontSize=15,
+        textColor=colors.HexColor(VIOLET),
     )
     motto_style = ParagraphStyle(
-        "Motto", fontName="Helvetica-Oblique", fontSize=9, textColor=colors.HexColor(GOLD)
+        "Motto",
+        fontName="Helvetica-Oblique",
+        fontSize=9,
+        textColor=colors.HexColor(GOLD),
     )
     title_style = ParagraphStyle(
         "Title",
@@ -93,7 +99,12 @@ def build_pdf(
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("FONTSIZE", (0, 0), (-1, -1), 9),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor(BLUSH)]),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [colors.white, colors.HexColor(BLUSH)],
+                ),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E7A0C5")),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("TOPPADDING", (0, 0), (-1, -1), 6),

@@ -21,13 +21,16 @@ router = APIRouter(prefix="/fees", tags=["school fees"])
 @router.get("/terms", response_model=list[FeeTermOut])
 async def list_terms(user: CurrentUser = Depends(get_current_user)):
     supabase = get_supabase()
-    res = supabase.table("fee_terms").select("*").order("start_date", desc=True).execute()
+    res = (
+        supabase.table("fee_terms").select("*").order("start_date", desc=True).execute()
+    )
     return res.data
 
 
 @router.post("/terms", response_model=FeeTermOut)
 async def create_term(
-    payload: FeeTermCreate, user: CurrentUser = Depends(require_roles("admin", "accountant"))
+    payload: FeeTermCreate,
+    user: CurrentUser = Depends(require_roles("admin", "accountant")),
 ):
     supabase = get_supabase()
     # ✅ FIXED: Added mode="json" to handle date/datetime serialization
@@ -57,9 +60,11 @@ async def set_fee_structure(
 ):
     supabase = get_supabase()
     # ✅ FIXED: Added mode="json" to handle date/datetime serialization
-    res = supabase.table("fee_structures").upsert(
-        payload.model_dump(mode="json"), on_conflict="term_id,class_id"
-    ).execute()
+    res = (
+        supabase.table("fee_structures")
+        .upsert(payload.model_dump(mode="json"), on_conflict="term_id,class_id")
+        .execute()
+    )
     if not res.data:
         raise HTTPException(500, "Could not save the fee structure.")
     return res.data[0]
@@ -150,7 +155,9 @@ async def delete_payment(
 
 # --- Balances -----------------------------------------------------------------
 @router.get("/balances/{term_id}/summary")
-async def term_balances_summary(term_id: str, user: CurrentUser = Depends(get_current_user)):
+async def term_balances_summary(
+    term_id: str, user: CurrentUser = Depends(get_current_user)
+):
     """Total due/paid/outstanding across the WHOLE term, regardless of which
     page of the balances table is currently showing."""
     supabase = get_supabase()
@@ -231,7 +238,9 @@ async def term_balances(
 
     paid_by_student: dict[str, float] = {}
     for p in payments:
-        paid_by_student[p["student_id"]] = paid_by_student.get(p["student_id"], 0) + p["amount"]
+        paid_by_student[p["student_id"]] = (
+            paid_by_student.get(p["student_id"], 0) + p["amount"]
+        )
 
     result = []
     for s in students:

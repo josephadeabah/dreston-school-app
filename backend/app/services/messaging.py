@@ -54,7 +54,9 @@ async def send_sms(phone: str, message: str) -> tuple[bool, str | None, str | No
         return False, None, str(exc)
 
 
-async def send_email(to_email: str, subject: str, body: str) -> tuple[bool, str | None, str | None]:
+async def send_email(
+    to_email: str, subject: str, body: str
+) -> tuple[bool, str | None, str | None]:
     """Returns (success, provider_message_id, error)."""
     if not settings.RESEND_API_KEY:
         return False, None, "Email is not configured yet (missing RESEND_API_KEY)."

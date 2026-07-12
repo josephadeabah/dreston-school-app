@@ -3,7 +3,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.pagination import Pagination
 from app.core.security import CurrentUser, get_current_user, require_roles
 from app.core.supabase_client import get_supabase
-from app.schemas.models import ClassCreate, ClassOut, GuardianCreate, GuardianOut, PaginatedResponse
+from app.schemas.models import (
+    ClassCreate,
+    ClassOut,
+    GuardianCreate,
+    GuardianOut,
+    PaginatedResponse,
+)
 
 router = APIRouter(tags=["classes & guardians"])
 
@@ -28,7 +34,9 @@ async def create_class(
 
 
 @router.delete("/classes/{class_id}")
-async def delete_class(class_id: str, user: CurrentUser = Depends(require_roles("admin"))):
+async def delete_class(
+    class_id: str, user: CurrentUser = Depends(require_roles("admin"))
+):
     supabase = get_supabase()
     try:
         res = supabase.table("classes").delete().eq("id", class_id).execute()
@@ -63,7 +71,9 @@ async def lookup_guardians(user: CurrentUser = Depends(get_current_user)):
     """Unpaginated, for populating dropdowns (e.g. linking a guardian to a
     student) — capped at 1000."""
     supabase = get_supabase()
-    res = supabase.table("guardians").select("*").order("full_name").limit(1000).execute()
+    res = (
+        supabase.table("guardians").select("*").order("full_name").limit(1000).execute()
+    )
     return res.data
 
 

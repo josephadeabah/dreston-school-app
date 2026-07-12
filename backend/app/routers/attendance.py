@@ -72,9 +72,11 @@ async def bulk_mark_attendance(
     if not rows:
         raise HTTPException(400, "No attendance records were provided.")
 
-    res = supabase.table("attendance_records").upsert(
-        rows, on_conflict="student_id,date"
-    ).execute()
+    res = (
+        supabase.table("attendance_records")
+        .upsert(rows, on_conflict="student_id,date")
+        .execute()
+    )
     return res.data
 
 
@@ -83,9 +85,7 @@ async def delete_attendance_record(
     record_id: str, user: CurrentUser = Depends(require_roles("admin", "teacher"))
 ):
     supabase = get_supabase()
-    res = (
-        supabase.table("attendance_records").delete().eq("id", record_id).execute()
-    )
+    res = supabase.table("attendance_records").delete().eq("id", record_id).execute()
     if not res.data:
         raise HTTPException(404, "That attendance record could not be found.")
     return {"message": "Attendance record deleted."}

@@ -23,7 +23,8 @@ class StaffCreate(BaseModel):
 
 @router.get("", response_model=PaginatedResponse[StaffOut])
 async def list_staff(
-    pagination: Pagination = Depends(), user: CurrentUser = Depends(require_roles("admin"))
+    pagination: Pagination = Depends(),
+    user: CurrentUser = Depends(require_roles("admin")),
 ):
     supabase = get_supabase()
     q = supabase.table("staff_profiles").select("*", count="exact").order("full_name")
@@ -53,7 +54,9 @@ async def create_staff(
             }
         )
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(400, f"Could not create the login for this staff member: {exc}")
+        raise HTTPException(
+            400, f"Could not create the login for this staff member: {exc}"
+        )
 
     new_user_id = auth_res.user.id
     profile = {
@@ -64,12 +67,16 @@ async def create_staff(
     }
     res = supabase.table("staff_profiles").insert(profile).execute()
     if not res.data:
-        raise HTTPException(500, "Login was created but the staff profile could not be saved.")
+        raise HTTPException(
+            500, "Login was created but the staff profile could not be saved."
+        )
     return res.data[0]
 
 
 @router.patch("/{staff_id}/deactivate", response_model=StaffOut)
-async def deactivate_staff(staff_id: str, user: CurrentUser = Depends(require_roles("admin"))):
+async def deactivate_staff(
+    staff_id: str, user: CurrentUser = Depends(require_roles("admin"))
+):
     if staff_id == user.id:
         raise HTTPException(400, "You can't deactivate your own account.")
     supabase = get_supabase()
@@ -85,7 +92,9 @@ async def deactivate_staff(staff_id: str, user: CurrentUser = Depends(require_ro
 
 
 @router.patch("/{staff_id}/reactivate", response_model=StaffOut)
-async def reactivate_staff(staff_id: str, user: CurrentUser = Depends(require_roles("admin"))):
+async def reactivate_staff(
+    staff_id: str, user: CurrentUser = Depends(require_roles("admin"))
+):
     supabase = get_supabase()
     res = (
         supabase.table("staff_profiles")
