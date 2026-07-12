@@ -4,10 +4,17 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { api, ApiError } from "@/lib/api";
 import { removeFromOutbox } from "@/lib/offline/db";
-import { FeedingCollection, Student } from "@/lib/types";
+import { FeedingCollection, Paginated, Student } from "@/lib/types";
+import Pagination from "@/components/Pagination";
+import ExportButtons from "@/components/ExportButtons";
+
+const PAGE_SIZE = 15;
 
 export default function FeedingPage() {
   const [students, setStudents] = useState<Student[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [amounts, setAmounts] = useState<Record<string, string>>({});
@@ -19,14 +26,34 @@ export default function FeedingPage() {
     {}
   );
   const [loadingCollections, setLoadingCollections] = useState(false);
+  const [dayTotal, setDayTotal] = useState({ total_collected: 0, number_of_students: 0 });
+
+  async function loadStudents() {
+    const searchParam = search ? `&search=${encodeURIComponent(search)}` : "";
+    const s = await api.get<Paginated<Student>>(
+      `/students?page=${page}&page_size=${PAGE_SIZE}${searchParam}`
+    );
+    setStudents(s.items);
+    setTotal(s.total);
+    setTotalPages(s.total_pages);
+  }
 
   async function loadCollectionsForDate() {
     setLoadingCollections(true);
     try {
-      const rows = await api.get<FeedingCollection[]>(`/feeding?on_date=${date}`);
+      // A day's collections are naturally bounded by the number of active
+      // students, so one large page covers "today" in a single request —
+      // this dataset is a same-day cross-reference, not a growing list.
+      const [rows, summary] = await Promise.all([
+        api.get<Paginated<FeedingCollection>>(`/feeding?on_date=${date}&page_size=1000`),
+        api.get<{ total_collected: number; number_of_students: number }>(
+          `/feeding/summary/daily?on_date=${date}`
+        ),
+      ]);
       const byStudent: Record<string, FeedingCollection> = {};
-      rows.forEach((r) => (byStudent[r.student_id] = r));
+      rows.items.forEach((r) => (byStudent[r.student_id] = r));
       setCollectedByStudent(byStudent);
+      setDayTotal(summary);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not load today's collections.");
     } finally {
@@ -35,19 +62,18 @@ export default function FeedingPage() {
   }
 
   useEffect(() => {
-    api
-      .get<Student[]>(`/students${search ? `?search=${encodeURIComponent(search)}` : ""}`)
-      .then(setStudents)
-      .catch((e) => toast.error(e.message));
+    loadStudents().catch((e) => toast.error(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, page]);
+
+  useEffect(() => {
+    setPage(1);
   }, [search]);
 
   useEffect(() => {
     loadCollectionsForDate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
-
-  const totalCollected = Object.values(collectedByStudent).reduce((sum, r) => sum + r.amount, 0);
-  const studentsPaidCount = Object.keys(collectedByStudent).length;
 
   async function handleRecord(studentId: string) {
     const amountStr = amounts[studentId];
@@ -71,7 +97,15 @@ export default function FeedingPage() {
       }
       setAmounts({ ...amounts, [studentId]: "" });
       // Reflect it immediately in the table without a full reload.
-      setCollectedByStudent((prev) => ({ ...prev, [studentId]: record }));
+      setCollectedByStudent((prev) => {
+        const existed = prev[studentId];
+        const next = { ...prev, [studentId]: record };
+        setDayTotal((t) => ({
+          total_collected: t.total_collected - (existed?.amount ?? 0) + record.amount,
+          number_of_students: existed ? t.number_of_students : t.number_of_students + 1,
+        }));
+        return next;
+      });
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not record this collection.");
     } finally {
@@ -94,6 +128,10 @@ export default function FeedingPage() {
         delete next[studentId];
         return next;
       });
+      setDayTotal((t) => ({
+        total_collected: t.total_collected - record.amount,
+        number_of_students: t.number_of_students - 1,
+      }));
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not delete this record.");
     }
@@ -101,11 +139,17 @@ export default function FeedingPage() {
 
   return (
     <div>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-plum-800">Morning Feeding Money</h1>
-        <p className="text-plum-800/60 text-sm mt-1">
-          Record what each child brings for breakfast/lunch.
-        </p>
+      <header className="mb-6 flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-plum-800">Morning Feeding Money</h1>
+          <p className="text-plum-800/60 text-sm mt-1">
+            Record what each child brings for breakfast/lunch.
+          </p>
+        </div>
+        <ExportButtons
+          basePath={`/exports/feeding?on_date=${date}`}
+          filename={`dreston-elite-feeding-${date}`}
+        />
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -114,7 +158,7 @@ export default function FeedingPage() {
             Collected today
           </p>
           <p className="font-display text-3xl font-semibold text-gold-500 mt-2">
-            GHS {totalCollected.toFixed(2)}
+            GHS {dayTotal.total_collected.toFixed(2)}
           </p>
         </div>
         <div className="card">
@@ -122,7 +166,7 @@ export default function FeedingPage() {
             Students who paid
           </p>
           <p className="font-display text-3xl font-semibold text-violet-600 mt-2">
-            {studentsPaidCount}
+            {dayTotal.number_of_students}
           </p>
         </div>
       </div>
@@ -237,6 +281,8 @@ export default function FeedingPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} itemLabel="students" />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { api, ApiError } from "@/lib/api";
 import { AttendanceRecord, ClassItem, Student } from "@/lib/types";
+import ExportButtons from "@/components/ExportButtons";
 
 type Status = "present" | "absent" | "late" | "excused";
 
@@ -40,7 +41,7 @@ export default function AttendancePage() {
     setLastSavedAt(null);
 
     Promise.all([
-      api.get<Student[]>(`/students?class_id=${classId}`),
+      api.get<Student[]>(`/students/lookup?class_id=${classId}`),
       api.get<AttendanceRecord[]>(
         `/attendance/for-class?class_id=${classId}&on_date=${date}`
       ),
@@ -159,6 +160,13 @@ export default function AttendancePage() {
         )}
 
         <div className="flex-1" />
+
+        {classId && (
+          <ExportButtons
+            basePath={`/exports/attendance?class_id=${classId}&on_date=${date}`}
+            filename={`dreston-elite-attendance-${date}`}
+          />
+        )}
 
         <div className="text-right">
           {lastSavedAt && !hasUnsavedChanges && (

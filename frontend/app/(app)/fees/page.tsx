@@ -9,17 +9,39 @@ import {
   FeePayment,
   FeeStructure,
   FeeTerm,
+  Paginated,
   Student,
   StudentFeeBalance,
 } from "@/lib/types";
+import Pagination from "@/components/Pagination";
+import ExportButtons from "@/components/ExportButtons";
+
+const PAGE_SIZE = 10;
+
+interface BalancesSummary {
+  total_due: number;
+  total_paid: number;
+  outstanding: number;
+  student_count: number;
+}
 
 export default function FeesPage() {
   const [terms, setTerms] = useState<FeeTerm[]>([]);
   const [termId, setTermId] = useState("");
+
   const [balances, setBalances] = useState<StudentFeeBalance[]>([]);
-  const [structures, setStructures] = useState<FeeStructure[]>([]);
+  const [balancesTotal, setBalancesTotal] = useState(0);
+  const [balancesTotalPages, setBalancesTotalPages] = useState(1);
+  const [balancesPage, setBalancesPage] = useState(1);
+  const [summary, setSummary] = useState<BalancesSummary | null>(null);
+
   const [payments, setPayments] = useState<FeePayment[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
+  const [paymentsTotal, setPaymentsTotal] = useState(0);
+  const [paymentsTotalPages, setPaymentsTotalPages] = useState(1);
+  const [paymentsPage, setPaymentsPage] = useState(1);
+
+  const [structures, setStructures] = useState<FeeStructure[]>([]);
+  const [students, setStudents] = useState<Student[]>([]); // unpaginated lookup, for dropdowns/names
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [loadingBalances, setLoadingBalances] = useState(false);
 
@@ -55,23 +77,57 @@ export default function FeesPage() {
     return t;
   }
 
-  async function loadTermData(id: string) {
+  async function loadSummary(id: string) {
     if (!id) {
-      setBalances([]);
-      setStructures([]);
-      setPayments([]);
+      setSummary(null);
       return;
     }
+    const s = await api.get<BalancesSummary>(`/fees/balances/${id}/summary`);
+    setSummary(s);
+  }
+
+  async function loadBalances(id: string, page: number) {
+    if (!id) {
+      setBalances([]);
+      setBalancesTotal(0);
+      setBalancesTotalPages(1);
+      return;
+    }
+    const b = await api.get<Paginated<StudentFeeBalance>>(
+      `/fees/balances/${id}?page=${page}&page_size=${PAGE_SIZE}`
+    );
+    setBalances(b.items);
+    setBalancesTotal(b.total);
+    setBalancesTotalPages(b.total_pages);
+  }
+
+  async function loadPayments(id: string, page: number) {
+    if (!id) {
+      setPayments([]);
+      setPaymentsTotal(0);
+      setPaymentsTotalPages(1);
+      return;
+    }
+    const p = await api.get<Paginated<FeePayment>>(
+      `/fees/payments?term_id=${id}&page=${page}&page_size=${PAGE_SIZE}`
+    );
+    setPayments(p.items);
+    setPaymentsTotal(p.total);
+    setPaymentsTotalPages(p.total_pages);
+  }
+
+  async function loadTermData(id: string) {
     setLoadingBalances(true);
     try {
-      const [b, s, p] = await Promise.all([
-        api.get<StudentFeeBalance[]>(`/fees/balances/${id}`),
-        api.get<FeeStructure[]>(`/fees/structures?term_id=${id}`),
-        api.get<FeePayment[]>(`/fees/payments?term_id=${id}`),
+      const structuresPromise = id
+        ? api.get<FeeStructure[]>(`/fees/structures?term_id=${id}`)
+        : Promise.resolve([]);
+      await Promise.all([
+        loadSummary(id),
+        loadBalances(id, balancesPage),
+        loadPayments(id, paymentsPage),
+        structuresPromise.then(setStructures),
       ]);
-      setBalances(b);
-      setStructures(s);
-      setPayments(p);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not load fee data for this term.");
     } finally {
@@ -83,14 +139,26 @@ export default function FeesPage() {
     loadTerms().then((t) => {
       if (t.length) setTermId(t[0].id);
     });
-    api.get<Student[]>("/students").then(setStudents);
+    api.get<Student[]>("/students/lookup").then(setStudents);
     api.get<ClassItem[]>("/classes").then(setClasses);
   }, []);
 
   useEffect(() => {
+    setBalancesPage(1);
+    setPaymentsPage(1);
     loadTermData(termId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [termId]);
+
+  useEffect(() => {
+    if (termId) loadBalances(termId, balancesPage).catch((e) => toast.error(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [balancesPage]);
+
+  useEffect(() => {
+    if (termId) loadPayments(termId, paymentsPage).catch((e) => toast.error(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentsPage]);
 
   async function handleCreateTerm(e: React.FormEvent) {
     e.preventDefault();
@@ -200,7 +268,7 @@ export default function FeesPage() {
 
       if (result._offline) {
         // Not on the server yet — reflect it locally instead of refetching,
-        // which would just show the old (cached) list and hide this payment.
+        // which would just show the old (cached) page and hide this payment.
         toast("Saved on this device — will sync once you're back online.", { icon: "📴" });
         setPayments((prev) => [result, ...prev]);
         setBalances((prev) =>
@@ -209,6 +277,9 @@ export default function FeesPage() {
               ? { ...b, amount_paid: b.amount_paid + result.amount, balance: b.balance - result.amount }
               : b
           )
+        );
+        setSummary((s) =>
+          s ? { ...s, total_paid: s.total_paid + result.amount, outstanding: s.outstanding - result.amount } : s
         );
       } else {
         toast.success("Payment recorded.");
@@ -240,9 +311,6 @@ export default function FeesPage() {
     }
   }
 
-  const totalDue = balances.reduce((sum, b) => sum + b.amount_due, 0);
-  const totalPaid = balances.reduce((sum, b) => sum + b.amount_paid, 0);
-
   return (
     <div>
       <header className="mb-6 flex items-center justify-between flex-wrap gap-3">
@@ -266,13 +334,16 @@ export default function FeesPage() {
             ))}
           </select>
           {termId && (
-            <button
-              className="text-xs text-red-500 hover:text-red-700 hover:underline"
-              disabled={deletingTerm}
-              onClick={handleDeleteTerm}
-            >
-              {deletingTerm ? "Deleting…" : "Delete term"}
-            </button>
+            <>
+              <ExportButtons basePath={`/exports/fees?term_id=${termId}`} filename="dreston-elite-fees" />
+              <button
+                className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                disabled={deletingTerm}
+                onClick={handleDeleteTerm}
+              >
+                {deletingTerm ? "Deleting…" : "Delete term"}
+              </button>
+            </>
           )}
           <button className="btn-secondary" onClick={() => setShowTermForm((v) => !v)}>
             {showTermForm ? "Cancel" : "+ New term"}
@@ -324,7 +395,7 @@ export default function FeesPage() {
             Total Due
           </p>
           <p className="font-display text-2xl font-semibold text-plum-800 mt-2">
-            GHS {totalDue.toFixed(2)}
+            GHS {(summary?.total_due ?? 0).toFixed(2)}
           </p>
         </div>
         <div className="card">
@@ -332,7 +403,7 @@ export default function FeesPage() {
             Total Paid
           </p>
           <p className="font-display text-2xl font-semibold text-gold-500 mt-2">
-            GHS {totalPaid.toFixed(2)}
+            GHS {(summary?.total_paid ?? 0).toFixed(2)}
           </p>
         </div>
         <div className="card">
@@ -340,7 +411,7 @@ export default function FeesPage() {
             Outstanding
           </p>
           <p className="font-display text-2xl font-semibold text-violet-600 mt-2">
-            GHS {(totalDue - totalPaid).toFixed(2)}
+            GHS {(summary?.outstanding ?? 0).toFixed(2)}
           </p>
         </div>
       </div>
@@ -476,7 +547,7 @@ export default function FeesPage() {
       </form>
 
       <h2 className="font-display font-semibold text-plum-800 mb-3">Balances by student</h2>
-      <div className="card p-0 overflow-hidden mb-6">
+      <div className="card p-0 overflow-hidden mb-2">
         <table className="w-full text-sm">
           <thead className="bg-blush-100 text-plum-800/70 text-left">
             <tr>
@@ -521,9 +592,16 @@ export default function FeesPage() {
           </tbody>
         </table>
       </div>
+      <Pagination
+        page={balancesPage}
+        totalPages={balancesTotalPages}
+        total={balancesTotal}
+        onPageChange={setBalancesPage}
+        itemLabel="students"
+      />
 
-      <h2 className="font-display font-semibold text-plum-800 mb-3">Recent payments</h2>
-      <div className="card p-0 overflow-hidden">
+      <h2 className="font-display font-semibold text-plum-800 mb-3 mt-6">Recent payments</h2>
+      <div className="card p-0 overflow-hidden mb-2">
         <table className="w-full text-sm">
           <thead className="bg-blush-100 text-plum-800/70 text-left">
             <tr>
@@ -568,6 +646,13 @@ export default function FeesPage() {
           </tbody>
         </table>
       </div>
+      <Pagination
+        page={paymentsPage}
+        totalPages={paymentsTotalPages}
+        total={paymentsTotal}
+        onPageChange={setPaymentsPage}
+        itemLabel="payments"
+      />
     </div>
   );
 }

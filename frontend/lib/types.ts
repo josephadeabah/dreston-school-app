@@ -1,3 +1,19 @@
+export interface Paginated<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface Staff {
+  id: string;
+  full_name: string;
+  role: "admin" | "teacher" | "accountant" | "front_desk";
+  phone: string | null;
+  is_active: boolean;
+}
+
 export interface ClassItem {
   id: string;
   name: string;

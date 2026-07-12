@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.core.pagination import Pagination
 from app.core.security import CurrentUser, get_current_user, require_roles
 from app.core.supabase_client import get_supabase
 from app.schemas.models import (
     GuardianLinkCreate,
     GuardianOut,
+    PaginatedResponse,
     StudentCreate,
     StudentOut,
 )
@@ -12,19 +14,36 @@ from app.schemas.models import (
 router = APIRouter(prefix="/students", tags=["students"])
 
 
-@router.get("", response_model=list[StudentOut])
+@router.get("", response_model=PaginatedResponse[StudentOut])
 async def list_students(
     class_id: str | None = None,
     search: str | None = None,
+    pagination: Pagination = Depends(),
     user: CurrentUser = Depends(get_current_user),
 ):
     supabase = get_supabase()
-    q = supabase.table("students").select("*").eq("is_active", True)
+    q = supabase.table("students").select("*", count="exact").eq("is_active", True)
     if class_id:
         q = q.eq("class_id", class_id)
     if search:
         q = q.ilike("full_name", f"%{search}%")
-    res = q.order("full_name").execute()
+    q = q.order("full_name")
+    res = pagination.apply(q).execute()
+    return pagination.wrap(res.data, res.count or 0)
+
+
+@router.get("/lookup", response_model=list[StudentOut])
+async def lookup_students(
+    class_id: str | None = None,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Unpaginated, for populating dropdowns and class rosters — capped at
+    1000 so it can never accidentally return an unbounded result."""
+    supabase = get_supabase()
+    q = supabase.table("students").select("*").eq("is_active", True)
+    if class_id:
+        q = q.eq("class_id", class_id)
+    res = q.order("full_name").limit(1000).execute()
     return res.data
 
 
@@ -43,13 +62,11 @@ async def create_student(
     user: CurrentUser = Depends(require_roles("admin", "front_desk")),
 ):
     supabase = get_supabase()
-    # ✅ FIXED: Use mode="json" to serialize date objects
-    data = payload.model_dump(exclude={"guardian_ids"}, mode="json")
+    data = payload.model_dump(exclude={"guardian_ids"})
     res = supabase.table("students").insert(data).execute()
     if not res.data:
         raise HTTPException(
-            400,
-            "Could not add this student. The admission number may already be in use.",
+            400, "Could not add this student. The admission number may already be in use."
         )
     student = res.data[0]
 
@@ -68,13 +85,13 @@ async def deactivate_student(
     student_id: str, user: CurrentUser = Depends(require_roles("admin"))
 ):
     supabase = get_supabase()
-    supabase.table("students").update({"is_active": False}).eq(
-        "id", student_id
-    ).execute()
+    supabase.table("students").update({"is_active": False}).eq("id", student_id).execute()
     return {"message": "Student marked inactive."}
 
 
 # --- Guardian links ---------------------------------------------------------
+# A student's guardians are who broadcasts (SMS/email) actually get sent to,
+# so these three endpoints are what makes messaging usable in practice.
 
 
 @router.get("/{student_id}/guardians", response_model=list[GuardianOut])
@@ -104,18 +121,12 @@ async def link_guardian_to_student(
 ):
     supabase = get_supabase()
 
-    student = (
-        supabase.table("students").select("id").eq("id", student_id).execute().data
-    )
+    student = supabase.table("students").select("id").eq("id", student_id).execute().data
     if not student:
         raise HTTPException(404, "Student not found.")
 
     guardian = (
-        supabase.table("guardians")
-        .select("*")
-        .eq("id", payload.guardian_id)
-        .execute()
-        .data
+        supabase.table("guardians").select("*").eq("id", payload.guardian_id).execute().data
     )
     if not guardian:
         raise HTTPException(404, "Guardian not found.")

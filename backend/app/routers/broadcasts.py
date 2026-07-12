@@ -2,9 +2,10 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
+from app.core.pagination import Pagination
 from app.core.security import CurrentUser, get_current_user, require_roles
 from app.core.supabase_client import get_supabase
-from app.schemas.models import BroadcastCreate, BroadcastOut
+from app.schemas.models import BroadcastCreate, BroadcastOut, PaginatedResponse
 from app.services.messaging import send_email, send_sms
 
 router = APIRouter(prefix="/broadcasts", tags=["messaging"])
@@ -75,9 +76,7 @@ async def _dispatch_broadcast(broadcast_id: str, channel: str, body: str, title:
         error = None
 
         if r["channel"] == "sms" and guardian.get("phone"):
-            success, msg_id, error = await send_sms(
-                guardian["phone"], f"{title}: {body}"
-            )
+            success, msg_id, error = await send_sms(guardian["phone"], f"{title}: {body}")
         elif r["channel"] == "email" and guardian.get("email"):
             success, msg_id, error = await send_email(guardian["email"], title, body)
         else:
@@ -96,16 +95,14 @@ async def _dispatch_broadcast(broadcast_id: str, channel: str, body: str, title:
     ).eq("id", broadcast_id).execute()
 
 
-@router.get("", response_model=list[BroadcastOut])
-async def list_broadcasts(user: CurrentUser = Depends(get_current_user)):
+@router.get("", response_model=PaginatedResponse[BroadcastOut])
+async def list_broadcasts(
+    pagination: Pagination = Depends(), user: CurrentUser = Depends(get_current_user)
+):
     supabase = get_supabase()
-    res = (
-        supabase.table("broadcasts")
-        .select("*")
-        .order("created_at", desc=True)
-        .execute()
-    )
-    return res.data
+    q = supabase.table("broadcasts").select("*", count="exact").order("created_at", desc=True)
+    res = pagination.apply(q).execute()
+    return pagination.wrap(res.data, res.count or 0)
 
 
 @router.post("", response_model=BroadcastOut)
@@ -131,9 +128,7 @@ async def create_broadcast(
         supabase.table("broadcasts").update({"status": "failed"}).eq(
             "id", broadcast["id"]
         ).execute()
-        raise HTTPException(
-            400, "No guardians matched this audience — nothing was sent."
-        )
+        raise HTTPException(400, "No guardians matched this audience — nothing was sent.")
 
     channels = ["sms", "email"] if payload.channel == "both" else [payload.channel]
     recipient_rows = [
@@ -147,11 +142,7 @@ async def create_broadcast(
 
     if payload.channel != "in_app":
         background_tasks.add_task(
-            _dispatch_broadcast,
-            broadcast["id"],
-            payload.channel,
-            payload.body,
-            payload.title,
+            _dispatch_broadcast, broadcast["id"], payload.channel, payload.body, payload.title
         )
     else:
         supabase.table("broadcasts").update({"status": "sent"}).eq(

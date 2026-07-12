@@ -3,10 +3,17 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { api, ApiError } from "@/lib/api";
-import { Guardian } from "@/lib/types";
+import { Guardian, Paginated } from "@/lib/types";
+import Pagination from "@/components/Pagination";
+import ExportButtons from "@/components/ExportButtons";
+
+const PAGE_SIZE = 15;
 
 export default function GuardiansPage() {
   const [guardians, setGuardians] = useState<Guardian[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -19,15 +26,22 @@ export default function GuardiansPage() {
   });
 
   async function load() {
-    const g = await api.get<Guardian[]>(
-      `/guardians${search ? `?search=${encodeURIComponent(search)}` : ""}`
+    const searchParam = search ? `&search=${encodeURIComponent(search)}` : "";
+    const g = await api.get<Paginated<Guardian>>(
+      `/guardians?page=${page}&page_size=${PAGE_SIZE}${searchParam}`
     );
-    setGuardians(g);
+    setGuardians(g.items);
+    setTotal(g.total);
+    setTotalPages(g.total_pages);
   }
 
   useEffect(() => {
     load().catch((e) => toast.error(e.message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, page]);
+
+  useEffect(() => {
+    setPage(1);
   }, [search]);
 
   async function handleAdd(e: React.FormEvent) {
@@ -62,7 +76,7 @@ export default function GuardiansPage() {
     try {
       await api.delete(`/guardians/${g.id}`);
       toast.success(`${g.full_name} was deleted.`);
-      setGuardians((prev) => prev.filter((x) => x.id !== g.id));
+      load();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not delete this guardian.");
     } finally {
@@ -72,7 +86,7 @@ export default function GuardiansPage() {
 
   return (
     <div>
-      <header className="flex items-center justify-between mb-6">
+      <header className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-plum-800">Guardians</h1>
           <p className="text-plum-800/60 text-sm mt-1">
@@ -80,9 +94,12 @@ export default function GuardiansPage() {
             Students page.
           </p>
         </div>
-        <button className="btn-primary" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? "Cancel" : "+ Add guardian"}
-        </button>
+        <div className="flex items-center gap-2">
+          <ExportButtons basePath="/exports/guardians" filename="dreston-elite-guardians" />
+          <button className="btn-primary" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? "Cancel" : "+ Add guardian"}
+          </button>
+        </div>
       </header>
 
       {showForm && (
@@ -182,6 +199,8 @@ export default function GuardiansPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} itemLabel="guardians" />
     </div>
   );
 }

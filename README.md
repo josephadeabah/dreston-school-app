@@ -160,7 +160,21 @@ While offline, a banner appears at the top of the app ("You're offline — new r
 - `lib/offline/sync.ts` replays the outbox in order once you're back online. Fee payments carry a `client_id` the backend uses to make sure a retried sync can never record the same payment twice (`fee_payments.client_id`, unique) — attendance and feeding money are naturally safe to retry since the database already treats "one record per student per day" as an update, not a new row.
 - To test it yourself: build and run the production server (`npm run build && npm start`), open the app in Chrome, then in DevTools → Application → Service Workers, tick "Offline" (or just turn off your wifi) and try marking attendance or recording a payment.
 
-## 6. Deleting records
+## 6. Pagination
+
+Every list of any real size — students, guardians, fee payments and balances, sent messages, staff — loads a page at a time (15–20 records) instead of everything at once, with Previous/Next controls at the bottom showing "X items · Page Y of Z". This keeps the app fast as the school's records grow over years, and keeps Supabase's free-tier bandwidth from being burned on data nobody's currently looking at.
+
+A few screens intentionally *don't* paginate: marking attendance and recording feeding money both need the **whole class roster** visible at once to be usable, so those use a separate, uncapped "lookup" endpoint (`/students/lookup`) instead of the paginated one. Dropdowns (e.g. "select a student" when recording a fee payment) work the same way.
+
+## 7. Exporting to PDF and Word
+
+Students, Guardians, Attendance (per class per day), Feeding Money (per day), Fees (per term), and Staff each have **⬇ PDF** and **⬇ Word** buttons that download a print-ready report — branded with the school name, motto, and colors, a clear title, and a generated-on timestamp. These are built server-side (so they always reflect the full data set, not just whatever page you're looking at) using `reportlab` for PDF and `python-docx` for Word — both pure-Python, no extra system packages to install on your hosting platform.
+
+## 8. Staff accounts and admins
+
+Only an existing admin can create staff accounts, from the **Staff** page (visible in the sidebar only to admins). This is also how a school creates additional admins: pick "Admin" as the role when adding someone. There's no separate "super admin" tier above admin — any admin has full access, including creating or deactivating other admins — so only grant that role to people you fully trust. Deactivating an account blocks their login without deleting their history (attendance they marked, payments they recorded, etc. all stay intact); reactivating restores access. Admins can't deactivate their own account, so the school can never accidentally lock itself out.
+
+## 9. Deleting records
 
 Every record type you can add — attendance marks, feeding money, fee terms, fee-per-class amounts, fee payments, students, classes, guardians, and sent messages — can also be deleted from the same screen it was created on. A few notes:
 
@@ -171,7 +185,7 @@ Every record type you can add — attendance marks, feeding money, fee terms, fe
 - Only `admin` can delete classes, staff accounts, and sent-message logs. `admin`/`accountant` can delete fee terms, fee structures, and fee payments. Feeding and attendance records can be deleted by whoever is allowed to record them in the first place.
 - If you already ran the original `schema.sql` before this feature was added, run `supabase/migrations/001_relax_delete_constraints.sql` once — it relaxes two foreign keys so term/guardian deletes never get silently blocked by unrelated history. Fresh projects can skip it; it's already folded into `schema.sql`.
 
-## 7. Staff roles
+## 10. Staff roles
 
 | Role | Can do |
 |---|---|
@@ -184,7 +198,7 @@ Roles are enforced on the backend (`app/core/security.py`), not just hidden in t
 
 ---
 
-## 8. Why this scales and stays maintainable
+## 11. Why this scales and stays maintainable
 
 - **Clear separation**: frontend never touches the database directly (except reading its own staff profile) — all rules live in one backend, so behavior can't drift between clients.
 - **Managed Postgres**: Supabase handles backups, scaling, and connection pooling; the schema uses proper foreign keys, indexes, and constraints instead of loose JSON blobs.
@@ -196,9 +210,9 @@ Roles are enforced on the backend (`app/core/security.py`), not just hidden in t
 
 ## What's implemented vs. what to add next
 
-**Working now**: student & guardian records (with guardian-to-student linking, which is what makes messaging able to reach anyone), class management, daily attendance marking (pre-fills existing marks for the day and shows a saved/pending state per student), feeding money collection with daily totals **and a live per-student "already paid today" column**, fee terms and per-class fee amounts **manageable entirely from the Fees page** (no direct database access needed), fee payments with balance tracking, SMS/email broadcast messaging with delivery status, role-based staff accounts, dashboard summary, deletion for every record type, and **offline support** for attendance, feeding money, and fee payments — see [Working offline](#5-working-offline) above.
+**Working now**: student & guardian records (with guardian-to-student linking, which is what makes messaging able to reach anyone), class management, daily attendance marking (pre-fills existing marks for the day and shows a saved/pending state per student), feeding money collection with daily totals **and a live per-student "already paid today" column**, fee terms and per-class fee amounts **manageable entirely from the Fees page** (no direct database access needed), fee payments with balance tracking, SMS/email broadcast messaging with delivery status, role-based staff accounts **that admins can create and promote directly from the app** (see [Staff accounts and admins](#8-staff-accounts-and-admins)), dashboard summary, deletion for every record type, **pagination** on every list of real size, **PDF/Word export** for rosters and reports, and **offline support** for attendance, feeding money, and fee payments — see [Working offline](#5-working-offline) above.
 
-**Natural next additions**: a receipts/PDF export for fee payments, a parent-facing portal (read-only view of their own child), push notifications, and multi-school support (the schema is already shaped to add a `school_id` column if Dreston Elite ever opens a second campus).
+**Natural next additions**: a parent-facing portal (read-only view of their own child), push notifications, audit-log filtering on the exports (e.g. a date-range attendance report instead of one day at a time), and multi-school support (the schema is already shaped to add a `school_id` column if Dreston Elite ever opens a second campus).
 
 ### A note on the `date` field naming
 

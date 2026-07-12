@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { api, ApiError } from "@/lib/api";
-import { Broadcast, ClassItem, Student } from "@/lib/types";
+import { Broadcast, ClassItem, Paginated, Student } from "@/lib/types";
+import Pagination from "@/components/Pagination";
+
+const PAGE_SIZE = 15;
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-gold-400/30 text-gold-500",
@@ -15,6 +18,9 @@ const STATUS_STYLES: Record<string, string> = {
 
 export default function MessagingPage() {
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [sending, setSending] = useState(false);
@@ -28,8 +34,12 @@ export default function MessagingPage() {
   });
 
   async function loadBroadcasts() {
-    const b = await api.get<Broadcast[]>("/broadcasts");
-    setBroadcasts(b);
+    const b = await api.get<Paginated<Broadcast>>(
+      `/broadcasts?page=${page}&page_size=${PAGE_SIZE}`
+    );
+    setBroadcasts(b.items);
+    setTotal(b.total);
+    setTotalPages(b.total_pages);
   }
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -40,7 +50,7 @@ export default function MessagingPage() {
     try {
       await api.delete(`/broadcasts/${id}`);
       toast.success("Message record deleted.");
-      setBroadcasts((prev) => prev.filter((b) => b.id !== id));
+      loadBroadcasts();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not delete this message.");
     } finally {
@@ -50,8 +60,12 @@ export default function MessagingPage() {
 
   useEffect(() => {
     loadBroadcasts().catch((e) => toast.error(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  useEffect(() => {
     api.get<ClassItem[]>("/classes").then(setClasses);
-    api.get<Student[]>("/students").then(setStudents);
+    api.get<Student[]>("/students/lookup").then(setStudents);
   }, []);
 
   async function handleSend(e: React.FormEvent) {
@@ -227,6 +241,8 @@ export default function MessagingPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} itemLabel="messages" />
     </div>
   );
 }

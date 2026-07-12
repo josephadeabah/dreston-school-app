@@ -1,7 +1,17 @@
 from datetime import date, datetime
-from typing import Literal, Optional
+from typing import Generic, Literal, Optional, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
+
+T = TypeVar("T")
+
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    items: list[T]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 # --- Classes -----------------------------------------------------------------
@@ -181,3 +191,12 @@ class DashboardSummary(BaseModel):
     feeding_collected_today: float
     fees_collected_this_term: float
     pending_broadcasts: int
+
+
+# --- Staff ------------------------------------------------------------------
+class StaffOut(BaseModel):
+    id: str
+    full_name: str
+    role: Literal["admin", "teacher", "accountant", "front_desk"]
+    phone: Optional[str] = None
+    is_active: bool

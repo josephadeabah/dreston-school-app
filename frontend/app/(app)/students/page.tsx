@@ -4,10 +4,17 @@ import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { api, ApiError } from "@/lib/api";
-import { ClassItem, Guardian, Student } from "@/lib/types";
+import { ClassItem, Guardian, Paginated, Student } from "@/lib/types";
+import Pagination from "@/components/Pagination";
+import ExportButtons from "@/components/ExportButtons";
+
+const PAGE_SIZE = 15;
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [allGuardians, setAllGuardians] = useState<Guardian[]>([]);
   const [search, setSearch] = useState("");
@@ -21,8 +28,6 @@ export default function StudentsPage() {
     class_id: "",
   });
 
-  // Guardian panel state — which student's panel is open, their linked
-  // guardians, and the pending "link an existing guardian" selection.
   const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
   const [guardiansByStudent, setGuardiansByStudent] = useState<Record<string, Guardian[]>>({});
   const [loadingGuardiansFor, setLoadingGuardiansFor] = useState<string | null>(null);
@@ -31,12 +36,15 @@ export default function StudentsPage() {
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
 
   async function load() {
+    const searchParam = search ? `&search=${encodeURIComponent(search)}` : "";
     const [s, c, g] = await Promise.all([
-      api.get<Student[]>(`/students${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+      api.get<Paginated<Student>>(`/students?page=${page}&page_size=${PAGE_SIZE}${searchParam}`),
       api.get<ClassItem[]>("/classes"),
-      api.get<Guardian[]>("/guardians"),
+      api.get<Guardian[]>("/guardians/lookup"),
     ]);
-    setStudents(s);
+    setStudents(s.items);
+    setTotal(s.total);
+    setTotalPages(s.total_pages);
     setClasses(c);
     setAllGuardians(g);
   }
@@ -44,6 +52,10 @@ export default function StudentsPage() {
   useEffect(() => {
     load().catch((e) => toast.error(e.message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, page]);
+
+  useEffect(() => {
+    setPage(1);
   }, [search]);
 
   function classNameFor(id: string | null) {
@@ -85,7 +97,7 @@ export default function StudentsPage() {
     try {
       await api.delete(`/students/${student.id}`);
       toast.success(`${student.full_name} was removed from the roster.`);
-      setStudents((prev) => prev.filter((s) => s.id !== student.id));
+      load();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not remove this student.");
     } finally {
@@ -154,14 +166,17 @@ export default function StudentsPage() {
 
   return (
     <div>
-      <header className="flex items-center justify-between mb-6">
+      <header className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-plum-800">Students</h1>
-          <p className="text-plum-800/60 text-sm mt-1">{students.length} enrolled</p>
+          <p className="text-plum-800/60 text-sm mt-1">{total} enrolled</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? "Cancel" : "+ Add student"}
-        </button>
+        <div className="flex items-center gap-2">
+          <ExportButtons basePath="/exports/students" filename="dreston-elite-student-roster" />
+          <button className="btn-primary" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? "Cancel" : "+ Add student"}
+          </button>
+        </div>
       </header>
 
       {showForm && (
@@ -369,6 +384,8 @@ export default function StudentsPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} itemLabel="students" />
     </div>
   );
 }

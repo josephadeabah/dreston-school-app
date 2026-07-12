@@ -7,6 +7,7 @@ from app.routers import (
     broadcasts,
     classes_guardians,
     dashboard,
+    exports,
     feeding,
     fees,
     staff,
@@ -36,6 +37,7 @@ app.include_router(fees.router)
 app.include_router(broadcasts.router)
 app.include_router(staff.router)
 app.include_router(dashboard.router)
+app.include_router(exports.router)
 
 
 @app.get("/")

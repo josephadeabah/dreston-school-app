@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.core.pagination import Pagination
 from app.core.security import CurrentUser, get_current_user, require_roles
 from app.core.supabase_client import get_supabase
 from app.schemas.models import (
@@ -9,6 +10,7 @@ from app.schemas.models import (
     FeeStructureOut,
     FeeTermCreate,
     FeeTermOut,
+    PaginatedResponse,
     StudentFeeBalance,
 )
 
@@ -19,16 +21,13 @@ router = APIRouter(prefix="/fees", tags=["school fees"])
 @router.get("/terms", response_model=list[FeeTermOut])
 async def list_terms(user: CurrentUser = Depends(get_current_user)):
     supabase = get_supabase()
-    res = (
-        supabase.table("fee_terms").select("*").order("start_date", desc=True).execute()
-    )
+    res = supabase.table("fee_terms").select("*").order("start_date", desc=True).execute()
     return res.data
 
 
 @router.post("/terms", response_model=FeeTermOut)
 async def create_term(
-    payload: FeeTermCreate,
-    user: CurrentUser = Depends(require_roles("admin", "accountant")),
+    payload: FeeTermCreate, user: CurrentUser = Depends(require_roles("admin", "accountant"))
 ):
     supabase = get_supabase()
     data = payload.model_dump(mode="json")
@@ -56,11 +55,9 @@ async def set_fee_structure(
     user: CurrentUser = Depends(require_roles("admin", "accountant")),
 ):
     supabase = get_supabase()
-    res = (
-        supabase.table("fee_structures")
-        .upsert(payload.model_dump(), on_conflict="term_id,class_id")
-        .execute()
-    )
+    res = supabase.table("fee_structures").upsert(
+        payload.model_dump(), on_conflict="term_id,class_id"
+    ).execute()
     if not res.data:
         raise HTTPException(500, "Could not save the fee structure.")
     return res.data[0]
@@ -90,20 +87,22 @@ async def list_fee_structures(
 
 
 # --- Payments -----------------------------------------------------------------
-@router.get("/payments", response_model=list[FeePaymentOut])
+@router.get("/payments", response_model=PaginatedResponse[FeePaymentOut])
 async def list_payments(
     student_id: str | None = None,
     term_id: str | None = None,
+    pagination: Pagination = Depends(),
     user: CurrentUser = Depends(get_current_user),
 ):
     supabase = get_supabase()
-    q = supabase.table("fee_payments").select("*")
+    q = supabase.table("fee_payments").select("*", count="exact")
     if student_id:
         q = q.eq("student_id", student_id)
     if term_id:
         q = q.eq("term_id", term_id)
-    res = q.order("paid_at", desc=True).execute()
-    return res.data
+    q = q.order("paid_at", desc=True)
+    res = pagination.apply(q).execute()
+    return pagination.wrap(res.data, res.count or 0)
 
 
 @router.post("/payments", response_model=FeePaymentOut)
@@ -147,14 +146,15 @@ async def delete_payment(
 
 
 # --- Balances -----------------------------------------------------------------
-@router.get("/balances/{term_id}", response_model=list[StudentFeeBalance])
-async def term_balances(term_id: str, user: CurrentUser = Depends(get_current_user)):
-    """Amount due vs paid per student for a given term."""
+@router.get("/balances/{term_id}/summary")
+async def term_balances_summary(term_id: str, user: CurrentUser = Depends(get_current_user)):
+    """Total due/paid/outstanding across the WHOLE term, regardless of which
+    page of the balances table is currently showing."""
     supabase = get_supabase()
 
     students = (
         supabase.table("students")
-        .select("id, full_name, class_id")
+        .select("id, class_id")
         .eq("is_active", True)
         .execute()
         .data
@@ -169,17 +169,66 @@ async def term_balances(term_id: str, user: CurrentUser = Depends(get_current_us
     }
     payments = (
         supabase.table("fee_payments")
-        .select("student_id, amount")
+        .select("amount")
         .eq("term_id", term_id)
         .execute()
         .data
     )
 
+    total_due = sum(structures.get(s["class_id"], 0) for s in students)
+    total_paid = sum(p["amount"] for p in payments)
+
+    return {
+        "total_due": total_due,
+        "total_paid": total_paid,
+        "outstanding": total_due - total_paid,
+        "student_count": len(students),
+    }
+
+
+@router.get("/balances/{term_id}", response_model=PaginatedResponse[StudentFeeBalance])
+async def term_balances(
+    term_id: str,
+    pagination: Pagination = Depends(),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Amount due vs paid per student for a given term."""
+    supabase = get_supabase()
+
+    students_query = (
+        supabase.table("students")
+        .select("id, full_name, class_id", count="exact")
+        .eq("is_active", True)
+        .order("full_name")
+    )
+    students_res = pagination.apply(students_query).execute()
+    students = students_res.data
+
+    structures = {
+        s["class_id"]: s["amount_due"]
+        for s in supabase.table("fee_structures")
+        .select("class_id, amount_due")
+        .eq("term_id", term_id)
+        .execute()
+        .data
+    }
+
+    # Only need payments for the students on this page, not the whole school.
+    student_ids_on_page = [s["id"] for s in students]
+    payments = (
+        supabase.table("fee_payments")
+        .select("student_id, amount")
+        .eq("term_id", term_id)
+        .in_("student_id", student_ids_on_page or [""])
+        .execute()
+        .data
+        if student_ids_on_page
+        else []
+    )
+
     paid_by_student: dict[str, float] = {}
     for p in payments:
-        paid_by_student[p["student_id"]] = (
-            paid_by_student.get(p["student_id"], 0) + p["amount"]
-        )
+        paid_by_student[p["student_id"]] = paid_by_student.get(p["student_id"], 0) + p["amount"]
 
     result = []
     for s in students:
@@ -194,4 +243,4 @@ async def term_balances(term_id: str, user: CurrentUser = Depends(get_current_us
                 balance=due - paid,
             )
         )
-    return result
+    return pagination.wrap(result, students_res.count or 0)

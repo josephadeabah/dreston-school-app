@@ -14,6 +14,8 @@ const NAV_ITEMS = [
   { href: "/messaging", label: "Messages", icon: "✉" },
 ];
 
+const ADMIN_NAV_ITEMS = [{ href: "/staff", label: "Staff", icon: "🛡" }];
+
 export default function Sidebar({
   profile,
   onSignOut,
@@ -57,6 +59,31 @@ export default function Sidebar({
             </Link>
           );
         })}
+
+        {profile?.role === "admin" && (
+          <>
+            <p className="px-4 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wide text-blush-100/50">
+              Admin
+            </p>
+            {ADMIN_NAV_ITEMS.map((item) => {
+              const active = pathname?.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
+                    active
+                      ? "bg-white text-violet-600 shadow-soft"
+                      : "text-blush-100 hover:bg-white/10"
+                  }`}
+                >
+                  <span aria-hidden>{item.icon}</span>
+                  {item.label}
+                </Link>
+              );
+            })}
+          </>
+        )}
       </nav>
 
       <div className="px-6 py-5 border-t border-white/10">

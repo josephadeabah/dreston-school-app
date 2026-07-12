@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.core.pagination import Pagination
 from app.core.security import CurrentUser, get_current_user, require_roles
 from app.core.supabase_client import get_supabase
-from app.schemas.models import ClassCreate, ClassOut, GuardianCreate, GuardianOut
+from app.schemas.models import ClassCreate, ClassOut, GuardianCreate, GuardianOut, PaginatedResponse
 
 router = APIRouter(tags=["classes & guardians"])
 
@@ -19,17 +20,14 @@ async def create_class(
     payload: ClassCreate, user: CurrentUser = Depends(require_roles("admin"))
 ):
     supabase = get_supabase()
-    # ✅ FIXED: Added mode="json" to handle date/datetime serialization
-    res = supabase.table("classes").insert(payload.model_dump(mode="json")).execute()
+    res = supabase.table("classes").insert(payload.model_dump()).execute()
     if not res.data:
         raise HTTPException(500, "Could not create the class. Please try again.")
     return res.data[0]
 
 
 @router.delete("/classes/{class_id}")
-async def delete_class(
-    class_id: str, user: CurrentUser = Depends(require_roles("admin"))
-):
+async def delete_class(class_id: str, user: CurrentUser = Depends(require_roles("admin"))):
     supabase = get_supabase()
     try:
         res = supabase.table("classes").delete().eq("id", class_id).execute()
@@ -44,15 +42,27 @@ async def delete_class(
     return {"message": "Class deleted."}
 
 
-@router.get("/guardians", response_model=list[GuardianOut])
+@router.get("/guardians", response_model=PaginatedResponse[GuardianOut])
 async def list_guardians(
-    search: str | None = None, user: CurrentUser = Depends(get_current_user)
+    search: str | None = None,
+    pagination: Pagination = Depends(),
+    user: CurrentUser = Depends(get_current_user),
 ):
     supabase = get_supabase()
-    q = supabase.table("guardians").select("*")
+    q = supabase.table("guardians").select("*", count="exact")
     if search:
         q = q.ilike("full_name", f"%{search}%")
-    res = q.order("full_name").execute()
+    q = q.order("full_name")
+    res = pagination.apply(q).execute()
+    return pagination.wrap(res.data, res.count or 0)
+
+
+@router.get("/guardians/lookup", response_model=list[GuardianOut])
+async def lookup_guardians(user: CurrentUser = Depends(get_current_user)):
+    """Unpaginated, for populating dropdowns (e.g. linking a guardian to a
+    student) — capped at 1000."""
+    supabase = get_supabase()
+    res = supabase.table("guardians").select("*").order("full_name").limit(1000).execute()
     return res.data
 
 
@@ -62,8 +72,7 @@ async def create_guardian(
     user: CurrentUser = Depends(require_roles("admin", "front_desk")),
 ):
     supabase = get_supabase()
-    # ✅ FIXED: Added mode="json" to handle date/datetime serialization
-    res = supabase.table("guardians").insert(payload.model_dump(mode="json")).execute()
+    res = supabase.table("guardians").insert(payload.model_dump()).execute()
     if not res.data:
         raise HTTPException(
             400, "Could not add this guardian. The phone number may already exist."
