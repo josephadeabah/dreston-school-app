@@ -3,13 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.pagination import Pagination
 from app.core.security import CurrentUser, get_current_user, require_roles
 from app.core.supabase_client import get_supabase
-from app.schemas.models import (
-    ClassCreate,
-    ClassOut,
-    GuardianCreate,
-    GuardianOut,
-    PaginatedResponse,
-)
+from app.schemas.models import ClassCreate, ClassOut, GuardianCreate, GuardianOut, PaginatedResponse
 
 router = APIRouter(tags=["classes & guardians"])
 
@@ -34,9 +28,7 @@ async def create_class(
 
 
 @router.delete("/classes/{class_id}")
-async def delete_class(
-    class_id: str, user: CurrentUser = Depends(require_roles("admin"))
-):
+async def delete_class(class_id: str, user: CurrentUser = Depends(require_roles("admin"))):
     supabase = get_supabase()
     try:
         res = supabase.table("classes").delete().eq("id", class_id).execute()
@@ -71,9 +63,7 @@ async def lookup_guardians(user: CurrentUser = Depends(get_current_user)):
     """Unpaginated, for populating dropdowns (e.g. linking a guardian to a
     student) — capped at 1000."""
     supabase = get_supabase()
-    res = (
-        supabase.table("guardians").select("*").order("full_name").limit(1000).execute()
-    )
+    res = supabase.table("guardians").select("*").order("full_name").limit(1000).execute()
     return res.data
 
 
@@ -83,13 +73,29 @@ async def create_guardian(
     user: CurrentUser = Depends(require_roles("admin", "front_desk")),
 ):
     supabase = get_supabase()
-    # ✅ FIXED: Added mode="json" to handle date/datetime serialization
-    res = supabase.table("guardians").insert(payload.model_dump(mode="json")).execute()
-    if not res.data:
+    try:
+        # ✅ FIXED: Added mode="json" to handle date/datetime serialization
+        res = supabase.table("guardians").insert(payload.model_dump(mode="json")).execute()
+        if not res.data:
+            raise HTTPException(
+                400, "Could not add this guardian. Please check the data and try again."
+            )
+        return res.data[0]
+    except Exception as e:
+        # Check if it's a duplicate phone number error
+        if hasattr(e, 'code') and e.code == '23505':
+            raise HTTPException(
+                400, f"A guardian with phone number {payload.phone} already exists. Please use a different phone number."
+            )
+        # Check for duplicate email if email is provided
+        if hasattr(e, 'code') and e.code == '23505' and hasattr(e, 'details') and 'email' in str(e.details):
+            raise HTTPException(
+                400, f"A guardian with email {payload.email} already exists. Please use a different email."
+            )
+        # Re-raise if it's a different error
         raise HTTPException(
-            400, "Could not add this guardian. The phone number may already exist."
+            500, "An unexpected error occurred while creating the guardian. Please try again."
         )
-    return res.data[0]
 
 
 @router.delete("/guardians/{guardian_id}")
