@@ -5,7 +5,7 @@ from fastapi import Query
 from app.schemas.models import PaginatedResponse
 
 DEFAULT_PAGE_SIZE = 20
-MAX_PAGE_SIZE = 100
+MAX_PAGE_SIZE = 1000  # ✅ Changed from 100 to 1000
 
 
 class Pagination:
